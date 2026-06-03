@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ColorGrab</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header-stripe"></div>
+  
+  <div class="logo-row">
+    <span class="logo-text">⬡ ColorGrab</span>
+    <span class="version-badge">v1.0</span>
+  </div>
+
+  <div class="status-container">
+    <div class="toggle-wrapper">
+      <input type="checkbox" id="inspector-toggle" class="toggle-input">
+      <label for="inspector-toggle" class="toggle-label"></label>
+    </div>
+    <span id="status-text" class="status-text">Inspector Inactive</span>
+  </div>
+
+  <div id="status-description" class="status-description">
+    Click the toggle to start inspecting
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="tips-section">
+    <div class="tip-row">
+      <span class="tip-icon">🖱</span>
+      <span class="tip-text">Hover any element to see CSS</span>
+    </div>
+    <div class="tip-row">
+      <span class="tip-icon">📋</span>
+      <span class="tip-text">Click element to copy all values</span>
+    </div>
+    <div class="tip-row">
+      <span class="tip-icon">⌨</span>
+      <span class="tip-text">Press Esc to deactivate</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    ColorGrab • CSS Inspector
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
