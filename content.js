@@ -11,6 +11,8 @@
   let currentTarget = null;
   let host = null;
   let shadow = null;
+  let statusBadge = null; // New variable for the status badge
+  let currentLanguage = 'en';
 
   const DESIGN = {
     bg: '#1a1f2e',
@@ -30,9 +32,10 @@
   const TOOLTIP_CSS = `
     :host { 
       all: initial; 
-      position: fixed; 
+      /* These are now set directly on the host element for robustness */
+      /* position: fixed; 
       z-index: 2147483647; 
-      pointer-events: none; 
+      pointer-events: none; */
       opacity: 0;
       transition: opacity 0.15s ease-out;
     }
@@ -141,6 +144,74 @@
 
   const EYEDROPPER_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 10-10"/><path d="M12 12l9-9"/><path d="m15 15 3-3"/></svg>`;
 
+  const I18N = {
+    en: {
+      brand: '⬡ ColorGrab',
+      colors: 'COLORS',
+      typography: 'TYPOGRAPHY',
+      layout: 'LAYOUT',
+      family: 'Family',
+      size: 'Size',
+      weight: 'Weight',
+      margin: 'Margin',
+      padding: 'Padding',
+      footer: 'Click element to copy all • Click color to copy hex',
+      noColors: 'No colors found',
+      more: '...and {count} more',
+      eyedropperUnsupported: 'EyeDropper not supported',
+      copied: '✓ Copied:',
+      copiedFlash: '✓ Copied!',
+      inspectorCopyTitle: '=== ColorGrab CSS Inspector ===',
+      element: 'Element',
+      colorsBlock: 'Colors',
+      noColorsBlock: 'No colors found',
+      typographyBlock: 'Typography',
+      fontFamily: 'Font Family',
+      fontSize: 'Font Size',
+      fontWeight: 'Font Weight',
+      layoutBlock: 'Layout',
+      statusBadge: 'CG'
+    },
+    vi: {
+      brand: '⬡ ColorGrab',
+      colors: 'MÀU SẮC',
+      typography: 'CHỮ',
+      layout: 'BỐ CỤC',
+      family: 'Phông',
+      size: 'Kích thước',
+      weight: 'Độ đậm',
+      margin: 'Lề ngoài',
+      padding: 'Lề trong',
+      footer: 'Nhấp để sao chép toàn bộ • Nhấp màu để sao chép mã hex',
+      noColors: 'Không tìm thấy màu',
+      more: '...và thêm {count} màu',
+      eyedropperUnsupported: 'Trình EyeDropper không được hỗ trợ',
+      copied: '✓ Đã sao chép:',
+      copiedFlash: '✓ Đã sao chép!',
+      inspectorCopyTitle: '=== Trình kiểm tra CSS ColorGrab ===',
+      element: 'Phần tử',
+      colorsBlock: 'Màu sắc',
+      noColorsBlock: 'Không tìm thấy màu',
+      typographyBlock: 'Chữ',
+      fontFamily: 'Phông chữ',
+      fontSize: 'Cỡ chữ',
+      fontWeight: 'Độ đậm',
+      layoutBlock: 'Bố cục',
+      statusBadge: 'CG'
+    }
+  };
+
+  function t(key, vars) {
+    const dict = I18N[currentLanguage] || I18N.en;
+    let text = dict[key] || I18N.en[key] || key;
+    if (vars) {
+      Object.keys(vars).forEach((name) => {
+        text = text.replace(`{${name}}`, String(vars[name]));
+      });
+    }
+    return text;
+  }
+
   function rgbToHex(rgb) {
     if (!rgb || rgb === 'transparent' || rgb === 'none') return null;
     const match = rgb.match(/\d+/g);
@@ -196,7 +267,16 @@
     if (host) return;
     host = document.createElement('div');
     host.id = 'colorgrab-tooltip-host';
-    (document.head || document.documentElement).appendChild(host);
+    // Explicitly set host styles for robustness
+    host.style.position = 'fixed';
+    host.style.zIndex = '2147483647';
+    host.style.pointerEvents = 'none'; // Default for host, overridden by children in shadow DOM
+    host.style.top = '0';
+    host.style.left = '0';
+    host.style.opacity = '0'; // Initial state, will be set to 1 on mouseover
+    host.style.transition = 'opacity 0.15s ease-out'; // Match :host transition
+    
+    (document.body || document.documentElement).appendChild(host);
     shadow = host.attachShadow({ mode: 'open' });
     
     const styleTag = document.createElement('style');
@@ -209,7 +289,7 @@
   }
 
   function updateTooltipContent(el) {
-    if (!shadow) return;
+    if (!shadow || !host) return; // Ensure host is also present
     const cs = window.getComputedStyle(el);
     const rect = el.getBoundingClientRect();
     const colors = scanColors(el);
@@ -231,39 +311,39 @@
     `).join('');
 
     const colorSection = colors.length === 0 
-      ? `<div class="cg-no-colors">No colors found</div>` 
-      : colorRows + (colors.length > 12 ? `<div class="cg-more">...and ${colors.length - 12} more</div>` : '');
+      ? `<div class="cg-no-colors">${t('noColors')}</div>` 
+      : colorRows + (colors.length > 12 ? `<div class="cg-more">${t('more', { count: colors.length - 12 })}</div>` : '');
 
     const tooltip = shadow.querySelector('#cg-tooltip');
     if (!tooltip) return;
 
     tooltip.innerHTML = `
       <div id="cg-header">
-        <span id="cg-logo">⬡ ColorGrab</span>
+        <span id="cg-logo">${t('brand')}</span>
         <span id="cg-tag">${elementLabel}</span>
         <button id="cg-eyedropper" aria-label="Pick color with eyedropper">${EYEDROPPER_SVG}</button>
       </div>
       <div id="cg-body">
         <div class="cg-section">
-          <div class="cg-section-label">COLORS</div>
+          <div class="cg-section-label">${t('colors')}</div>
           <div id="cg-colors-list">${colorSection}</div>
         </div>
         <div class="cg-divider"></div>
         <div class="cg-section">
-          <div class="cg-section-label">TYPOGRAPHY</div>
-          <div class="cg-row"><span class="cg-label">Family</span><span class="cg-value">${truncatedFont}</span></div>
-          <div class="cg-row"><span class="cg-label">Size</span><span class="cg-value">${cs.getPropertyValue('font-size')}</span></div>
-          <div class="cg-row"><span class="cg-label">Weight</span><span class="cg-value">${cs.getPropertyValue('font-weight')}</span></div>
+          <div class="cg-section-label">${t('typography')}</div>
+          <div class="cg-row"><span class="cg-label">${t('family')}</span><span class="cg-value">${truncatedFont}</span></div>
+          <div class="cg-row"><span class="cg-label">${t('size')}</span><span class="cg-value">${cs.getPropertyValue('font-size')}</span></div>
+          <div class="cg-row"><span class="cg-label">${t('weight')}</span><span class="cg-value">${cs.getPropertyValue('font-weight')}</span></div>
         </div>
         <div class="cg-divider"></div>
         <div class="cg-section">
-          <div class="cg-section-label">LAYOUT</div>
-          <div class="cg-row"><span class="cg-label">Size</span><span class="cg-value">${Math.round(rect.width)}px × ${Math.round(rect.height)}px</span></div>
-          <div class="cg-row"><span class="cg-label">Margin</span><span class="cg-value">${getSpacing(el, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}</span></div>
-          <div class="cg-row"><span class="cg-label">Padding</span><span class="cg-value">${getSpacing(el, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}</span></div>
+          <div class="cg-section-label">${t('layout')}</div>
+          <div class="cg-row"><span class="cg-label">${t('size')}</span><span class="cg-value">${Math.round(rect.width)}px × ${Math.round(rect.height)}px</span></div>
+          <div class="cg-row"><span class="cg-label">${t('margin')}</span><span class="cg-value">${getSpacing(el, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}</span></div>
+          <div class="cg-row"><span class="cg-label">${t('padding')}</span><span class="cg-value">${getSpacing(el, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}</span></div>
         </div>
       </div>
-      <div id="cg-footer">Click element to copy all • Click color to copy hex</div>
+      <div id="cg-footer">${t('footer')}</div>
     `;
 
     shadow.querySelector('#cg-eyedropper').addEventListener('click', handleEyedropper);
@@ -282,16 +362,17 @@
   async function handleEyedropper() {
     if (!window.EyeDropper) {
       const header = shadow.querySelector('#cg-header');
+      if (!header) return;
       const original = header.innerHTML;
-      header.innerHTML = `<span style="color:white; font-size:11px">EyeDropper not supported</span>`;
+      header.innerHTML = `<span style="color:white; font-size:11px">${t('eyedropperUnsupported')}</span>`;
       setTimeout(() => { 
-        updateTooltipContent(currentTarget); 
+        if (currentTarget) updateTooltipContent(currentTarget); 
       }, 2000);
       return;
     }
 
     const dropper = new EyeDropper();
-    host.style.display = 'none';
+    if (host) host.style.display = 'none';
     try {
       const result = await dropper.open();
       const hex = result.sRGBHex;
@@ -299,15 +380,16 @@
       await copyToClipboard(hex);
       
       const header = shadow.querySelector('#cg-header');
+      if (!header) return;
       const original = header.innerHTML;
-      header.innerHTML = `<span style="color:white; font-size:11px">✓ Copied: ${hex} | ${rgb}</span>`;
+      header.innerHTML = `<span style="color:white; font-size:11px">${t('copied')} ${hex} | ${rgb}</span>`;
       setTimeout(() => {
-        updateTooltipContent(currentTarget);
+        if (currentTarget) updateTooltipContent(currentTarget);
       }, 2000);
     } catch (e) {
       // User cancelled
     } finally {
-      host.style.display = '';
+      if (host) host.style.display = '';
     }
   }
 
@@ -342,12 +424,14 @@
     
     initTooltip();
     updateTooltipContent(currentTarget);
-    host.style.opacity = '1';
-    host.style.transform = 'translateY(0)';
+    if (host) {
+      host.style.opacity = '1';
+      // host.style.transform = 'translateY(0)'; // Removed, handled by CSS transition on opacity
+    }
   };
 
   const _onMousemove = (e) => {
-    if (!isActive || !host) return;
+    if (!isActive || !host || !shadow) return; // Ensure host and shadow are present
     let left = e.clientX + 16;
     let top = e.clientY + 12;
     const tooltip = shadow.querySelector('#cg-tooltip');
@@ -385,27 +469,27 @@
     
     const colorList = colors.map(c => `${c.hex} | ${c.rgb}`).join('\n');
 
-    const copyText = `=== ColorGrab CSS Inspector ===
-Element: ${tag}${cls}${id}
+    const copyText = `${t('inspectorCopyTitle')}
+${t('element')}: ${tag}${cls}${id}
 
-[Colors]
-${colorList || 'No colors found'}
+[${t('colorsBlock')}]
+${colorList || t('noColorsBlock')}
 
-[Typography]
-Font Family: ${cs.getPropertyValue('font-family').split(',')[0]}
-Font Size: ${cs.getPropertyValue('font-size')}
-Font Weight: ${cs.getPropertyValue('font-weight')}
+[${t('typographyBlock')}]
+${t('fontFamily')}: ${cs.getPropertyValue('font-family').split(',')[0]}
+${t('fontSize')}: ${cs.getPropertyValue('font-size')}
+${t('fontWeight')}: ${cs.getPropertyValue('font-weight')}
 
-[Layout]
-Size: ${Math.round(rect.width)}px × ${Math.round(rect.height)}px
-Margin: ${getSpacing(currentTarget, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}
-Padding: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
+[${t('layoutBlock')}]
+${t('size')}: ${Math.round(rect.width)}px × ${Math.round(rect.height)}px
+${t('margin')}: ${getSpacing(currentTarget, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}
+${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
 
     copyToClipboard(copyText).then(() => {
       const body = shadow.querySelector('#cg-body');
       if (!body) return;
       const original = body.innerHTML;
-      body.innerHTML = `<div class="cg-copied-flash">✓ Copied!</div>`;
+      body.innerHTML = `<div class="cg-copied-flash">${t('copiedFlash')}</div>`;
       setTimeout(() => { 
         if (shadow) {
           const currentBody = shadow.querySelector('#cg-body');
@@ -431,6 +515,26 @@ Padding: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bo
     style.textContent = `[data-colorgrab-highlight] { outline: 2px dashed ${DESIGN.accent1} !important; background-color: rgba(34, 197, 94, 0.08) !important; box-shadow: 0 0 0 2px ${DESIGN.accent1} !important; }`;
     (document.head || document.documentElement).appendChild(style);
 
+    // Add status badge
+    statusBadge = document.createElement('div');
+    statusBadge.id = 'colorgrab-status-badge';
+    statusBadge.textContent = t('statusBadge');
+    statusBadge.style.cssText = `
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: ${DESIGN.accent1};
+      color: white;
+      font-family: sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+      z-index: 2147483647;
+      pointer-events: none;
+    `;
+    document.body.appendChild(statusBadge);
+
     document.addEventListener('mouseover', _onMouseover, true);
     document.addEventListener('mousemove', _onMousemove, true);
     document.addEventListener('mouseout', _onMouseout, true);
@@ -454,6 +558,12 @@ Padding: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bo
     host = null;
     shadow = null;
     currentTarget = null;
+
+    // Remove status badge
+    if (statusBadge) {
+      statusBadge.remove();
+      statusBadge = null;
+    }
   }
 
   chrome.runtime.onMessage.addListener((request) => {
@@ -461,9 +571,21 @@ Padding: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bo
       if (request.isActive) activate();
       else deactivate();
     }
+
+    if (request.action === 'setLanguage') {
+      currentLanguage = request.language === 'vi' ? 'vi' : 'en';
+      if (currentTarget && host && shadow) {
+        updateTooltipContent(currentTarget);
+      }
+      if (statusBadge) {
+        statusBadge.textContent = t('statusBadge');
+      }
+    }
   });
 
-  chrome.storage.local.get('isActive', (data) => {
+  // Initial state sync on content script load
+  chrome.storage.local.get(['isActive', 'language'], (data) => {
+    currentLanguage = data.language === 'vi' ? 'vi' : 'en';
     if (data.isActive) activate();
   });
 

@@ -10,8 +10,11 @@
   <div class="header-stripe"></div>
   
   <div class="logo-row">
-    <span class="logo-text">⬡ ColorGrab</span>
-    <span class="version-badge">v1.0</span>
+    <div class="brand-block">
+      <span class="logo-text">⬡ ColorGrab</span>
+      <span class="version-badge">v1.0</span>
+    </div>
+    <button id="language-toggle" class="language-toggle" type="button" aria-label="Switch extension language">VI</button>
   </div>
 
   <div class="status-container">
@@ -31,19 +34,19 @@
   <div class="tips-section">
     <div class="tip-row">
       <span class="tip-icon">🖱</span>
-      <span class="tip-text">Hover any element to see CSS</span>
+      <span id="tip-hover" class="tip-text">Hover any element to see CSS</span>
     </div>
     <div class="tip-row">
       <span class="tip-icon">📋</span>
-      <span class="tip-text">Click element to copy all values</span>
+      <span id="tip-copy" class="tip-text">Click element to copy all values</span>
     </div>
     <div class="tip-row">
       <span class="tip-icon">⌨</span>
-      <span class="tip-text">Press Esc to deactivate</span>
+      <span id="tip-esc" class="tip-text">Press Esc to deactivate</span>
     </div>
   </div>
 
-  <div class="footer">
+  <div id="footer-text" class="footer">
     ColorGrab • CSS Inspector
   </div>
 
