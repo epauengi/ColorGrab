@@ -1,259 +1,238 @@
 'use strict';
 
 (function() {
-  // Prevent multiple injections from creating multiple instances
-  if (window.__COLORGRAB_INITIALIZED__) {
-    return;
-  }
+  if (window.__COLORGRAB_INITIALIZED__) return;
   window.__COLORGRAB_INITIALIZED__ = true;
 
   let isActive = false;
   let currentTarget = null;
   let host = null;
   let shadow = null;
-  let statusBadge = null; // New variable for the status badge
+  let statusBadge = null;
   let currentLanguage = 'en';
+  let copyFormat = 'hex';
 
-  const DESIGN = {
-    bg: '#1a1f2e',
-    bg2: '#242938',
-    border: '#2d3548',
-    accent1: '#22c55e',
-    accent2: '#16a34a',
+  // ── Design tokens ────────────────────────────────────────────────
+  const D = {
+    bg: '#1a1f2e', bg2: '#242938', border: '#2d3548',
+    accent: '#22c55e', accent2: '#16a34a',
     grad: 'linear-gradient(135deg, #22c55e 0%, #6b7280 100%)',
-    text: '#f1f5f9',
-    textMuted: '#94a3b8',
-    textValue: '#e2e8f0',
+    text: '#f1f5f9', muted: '#94a3b8', value: '#e2e8f0',
     radius: '10px',
     shadow: '0 4px 6px rgba(0,0,0,0.4), 0 12px 32px rgba(0,0,0,0.5)',
     font: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
   };
 
-  const TOOLTIP_CSS = `
-    :host { 
-      all: initial; 
-      /* These are now set directly on the host element for robustness */
-      /* position: fixed; 
-      z-index: 2147483647; 
-      pointer-events: none; */
-      opacity: 0;
-      transition: opacity 0.15s ease-out;
-    }
-    #cg-tooltip { 
-      width: 268px; 
-      background: ${DESIGN.bg}; 
-      border: 1px solid ${DESIGN.border}; 
-      border-radius: ${DESIGN.radius}; 
-      box-shadow: ${DESIGN.shadow}; 
-      overflow: hidden; 
-      font-family: ${DESIGN.font}; 
-      animation: cg-in 150ms ease-out; 
-    }
-    #cg-header { 
-      background: ${DESIGN.grad}; 
-      padding: 8px 10px; 
-      display: flex; 
-      align-items: center; 
-      gap: 6px; 
-      pointer-events: auto; 
-    }
-    #cg-logo { font-size: 12px; font-weight: 700; color: #fff; flex: 1; }
-    #cg-tag { 
-      font-size: 10px; 
-      font-family: monospace; 
-      color: rgba(255,255,255,0.75); 
-      max-width: 100px; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      white-space: nowrap; 
-    }
-    #cg-eyedropper { 
-      background: rgba(255,255,255,0.15); 
-      border: 1px solid rgba(255,255,255,0.25); 
-      border-radius: 5px; 
-      padding: 3px 5px; 
-      cursor: pointer; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      transition: background 150ms ease; 
-    }
-    #cg-eyedropper:hover { background: rgba(255,255,255,0.28); }
-    #cg-body { padding: 10px 12px; }
-    .cg-section-label { 
-      font-size: 9px; 
-      text-transform: uppercase; 
-      letter-spacing: 0.08em; 
-      color: ${DESIGN.textMuted}; 
-      margin-bottom: 6px; 
-      font-weight: 600; 
-    }
-    .cg-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-    .cg-label { font-size: 11px; color: ${DESIGN.textMuted}; }
-    .cg-value { 
-      font-size: 11px; 
-      color: ${DESIGN.textValue}; 
-      font-weight: 500; 
-      text-align: right; 
-      max-width: 160px; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      white-space: nowrap; 
-    }
-    .cg-color-row { 
-      display: flex; 
-      align-items: center; 
-      gap: 6px; 
-      padding: 3px 4px; 
-      border-radius: 5px; 
-      cursor: pointer; 
-      pointer-events: auto; 
-      transition: background 100ms ease; 
-      margin-bottom: 3px; 
-    }
-    .cg-color-row:hover { background: rgba(34,197,94,0.1); }
-    .cg-color-row.cg-copied { background: rgba(34,197,94,0.2); }
-    .cg-swatch { 
-      width: 14px; 
-      height: 14px; 
-      border-radius: 3px; 
-      border: 1px solid rgba(255,255,255,0.15); 
-      flex-shrink: 0; 
-    }
-    .cg-swatch-transparent { 
-      background: repeating-conic-gradient(#888 0% 25%, #fff 0% 50%) 0 0 / 8px 8px; 
-    }
-    .cg-hex { font-size: 11px; color: ${DESIGN.textValue}; font-weight: 500; font-family: monospace; }
-    .cg-rgb { font-size: 11px; color: ${DESIGN.textMuted}; }
-    .cg-divider { height: 1px; background: ${DESIGN.border}; margin: 8px 0; }
-    #cg-footer { font-size: 9px; color: #4b5563; text-align: center; padding: 5px 0 7px; }
-    .cg-copied-flash { 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      height: 60px; 
-      font-size: 14px; 
-      font-weight: 600; 
-      color: ${DESIGN.accent1}; 
-    }
-    .cg-no-colors { font-size: 11px; color: ${DESIGN.textMuted}; font-style: italic; }
-    .cg-more { font-size: 10px; color: #6b7280; margin-top: 3px; text-align: center; }
-    @keyframes cg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-    @media (prefers-reduced-motion: reduce) { #cg-tooltip { animation: none; } }
-  `;
-
-  const EYEDROPPER_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 10-10"/><path d="M12 12l9-9"/><path d="m15 15 3-3"/></svg>`;
-
+  // ── i18n ─────────────────────────────────────────────────────────
   const I18N = {
     en: {
-      brand: '⬡ ColorGrab',
-      colors: 'COLORS',
-      typography: 'TYPOGRAPHY',
-      layout: 'LAYOUT',
-      family: 'Family',
-      size: 'Size',
-      weight: 'Weight',
-      margin: 'Margin',
-      padding: 'Padding',
-      footer: 'Click element to copy all • Click color to copy hex',
-      noColors: 'No colors found',
-      more: '...and {count} more',
+      brand: '⬡ ColorGrab', colors: 'COLORS', typography: 'TYPOGRAPHY',
+      layout: 'LAYOUT', contrast: 'CONTRAST', family: 'Family', size: 'Size',
+      weight: 'Weight', margin: 'Margin', padding: 'Padding',
+      footer: 'Click to copy all • Click color swatch to copy',
+      noColors: 'No colors found', more: '…and {count} more',
       eyedropperUnsupported: 'EyeDropper not supported',
-      copied: '✓ Copied:',
-      copiedFlash: '✓ Copied!',
+      copied: '✓ Copied:', copiedFlash: '✓ Copied!',
       inspectorCopyTitle: '=== ColorGrab CSS Inspector ===',
-      element: 'Element',
-      colorsBlock: 'Colors',
-      noColorsBlock: 'No colors found',
-      typographyBlock: 'Typography',
-      fontFamily: 'Font Family',
-      fontSize: 'Font Size',
-      fontWeight: 'Font Weight',
-      layoutBlock: 'Layout',
-      statusBadge: 'CG'
+      element: 'Element', colorsBlock: 'Colors', noColorsBlock: 'No colors found',
+      typographyBlock: 'Typography', fontFamily: 'Font Family',
+      fontSize: 'Font Size', fontWeight: 'Font Weight', layoutBlock: 'Layout',
+      contrastBlock: 'Contrast', textColor: 'Text', bgColor: 'Background',
+      ratio: 'Ratio', statusBadge: 'CG', undetermined: 'N/A',
+      contrastNote: 'alpha/gradient — cannot determine'
     },
     vi: {
-      brand: '⬡ ColorGrab',
-      colors: 'MÀU SẮC',
-      typography: 'CHỮ',
-      layout: 'BỐ CỤC',
-      family: 'Phông',
-      size: 'Kích thước',
-      weight: 'Độ đậm',
-      margin: 'Lề ngoài',
-      padding: 'Lề trong',
-      footer: 'Nhấp để sao chép toàn bộ • Nhấp màu để sao chép mã hex',
-      noColors: 'Không tìm thấy màu',
-      more: '...và thêm {count} màu',
-      eyedropperUnsupported: 'Trình EyeDropper không được hỗ trợ',
-      copied: '✓ Đã sao chép:',
-      copiedFlash: '✓ Đã sao chép!',
+      brand: '⬡ ColorGrab', colors: 'MÀU SẮC', typography: 'CHỮ',
+      layout: 'BỐ CỤC', contrast: 'TƯƠNG PHẢN', family: 'Phông', size: 'Kích thước',
+      weight: 'Độ đậm', margin: 'Lề ngoài', padding: 'Lề trong',
+      footer: 'Nhấp để sao chép toàn bộ • Nhấp ô màu để sao chép',
+      noColors: 'Không tìm thấy màu', more: '…và thêm {count} màu',
+      eyedropperUnsupported: 'EyeDropper không được hỗ trợ',
+      copied: '✓ Đã sao chép:', copiedFlash: '✓ Đã sao chép!',
       inspectorCopyTitle: '=== Trình kiểm tra CSS ColorGrab ===',
-      element: 'Phần tử',
-      colorsBlock: 'Màu sắc',
-      noColorsBlock: 'Không tìm thấy màu',
-      typographyBlock: 'Chữ',
-      fontFamily: 'Phông chữ',
-      fontSize: 'Cỡ chữ',
-      fontWeight: 'Độ đậm',
-      layoutBlock: 'Bố cục',
-      statusBadge: 'CG'
+      element: 'Phần tử', colorsBlock: 'Màu sắc', noColorsBlock: 'Không tìm thấy màu',
+      typographyBlock: 'Chữ', fontFamily: 'Phông chữ',
+      fontSize: 'Cỡ chữ', fontWeight: 'Độ đậm', layoutBlock: 'Bố cục',
+      contrastBlock: 'Tương phản', textColor: 'Chữ', bgColor: 'Nền',
+      ratio: 'Tỉ lệ', statusBadge: 'CG', undetermined: 'N/A',
+      contrastNote: 'alpha/gradient — không xác định được'
     }
   };
 
   function t(key, vars) {
     const dict = I18N[currentLanguage] || I18N.en;
     let text = dict[key] || I18N.en[key] || key;
-    if (vars) {
-      Object.keys(vars).forEach((name) => {
-        text = text.replace(`{${name}}`, String(vars[name]));
-      });
-    }
+    if (vars) Object.keys(vars).forEach(k => { text = text.replace(`{${k}}`, String(vars[k])); });
     return text;
   }
 
-  function rgbToHex(rgb) {
-    if (!rgb || rgb === 'transparent' || rgb === 'none') return null;
-    const match = rgb.match(/\d+/g);
-    if (!match) return null;
-    const [r, g, b] = match.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0'));
-    return `#${r}${g}${b}`.toUpperCase();
+  // ── Color conversion (CSS Color 4 safe) ──────────────────────────
+  // Canvas 1×1 normalizes ANY CSS color string to sRGB RGBA
+  const _cvs = document.createElement('canvas');
+  _cvs.width = _cvs.height = 1;
+  const _ctx = _cvs.getContext('2d', { willReadFrequently: true });
+
+  function parseColor(cssValue) {
+    if (!cssValue || cssValue === 'transparent' || cssValue === 'none' ||
+        cssValue === 'initial' || cssValue === 'inherit' || cssValue === 'unset') return null;
+    _ctx.clearRect(0, 0, 1, 1);
+    _ctx.fillStyle = '#00000000';
+    _ctx.fillStyle = cssValue;
+    _ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = _ctx.getImageData(0, 0, 1, 1).data;
+    if (a === 0) return null; // fully transparent
+    return { r, g, b, a: a / 255 };
   }
 
-  function isTransparent(rgb) {
-    if (!rgb || rgb === 'transparent' || rgb === 'none') return true;
-    const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if (!match) return false;
-    const alpha = match[4] !== undefined ? parseFloat(match[4]) : 1;
-    return alpha === 0;
+  function rgbaToHex(c) {
+    const h = v => v.toString(16).padStart(2, '0');
+    return `#${h(c.r)}${h(c.g)}${h(c.b)}`.toUpperCase();
   }
 
+  function rgbaToRgbStr(c) {
+    return c.a < 1
+      ? `rgba(${c.r}, ${c.g}, ${c.b}, ${round2(c.a)})`
+      : `rgb(${c.r}, ${c.g}, ${c.b})`;
+  }
+
+  function rgbaToHsl(c) {
+    const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return `hsl(0, 0%, ${Math.round(l * 100)}%)`;
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+  }
+
+  function rgbaToOklch(c) {
+    // sRGB → linear sRGB → OKLab → OKLCH
+    const lin = v => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    const R = lin(c.r), G = lin(c.g), B = lin(c.b);
+    // sRGB linear → LMS (using OKLab matrix)
+    const l_ = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+    const m_ = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+    const s_ = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+    const L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_;
+    const a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_;
+    const b_ = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_;
+    const C = Math.sqrt(a * a + b_ * b_);
+    let H = Math.atan2(b_, a) * 180 / Math.PI;
+    if (H < 0) H += 360;
+    return `oklch(${round2(L)} ${round3(C)} ${Math.round(H)})`;
+  }
+
+  function round2(v) { return Math.round(v * 100) / 100; }
+  function round3(v) { return Math.round(v * 1000) / 1000; }
+
+  function formatColor(c) {
+    switch (copyFormat) {
+      case 'rgb': return rgbaToRgbStr(c);
+      case 'hsl': return rgbaToHsl(c);
+      case 'oklch': return rgbaToOklch(c);
+      default: return rgbaToHex(c);
+    }
+  }
+
+  // ── WCAG 2.x Contrast ───────────────────────────────────────────
+  function relativeLuminance(c) {
+    const lin = v => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+  }
+
+  function contrastRatio(c1, c2) {
+    const l1 = relativeLuminance(c1), l2 = relativeLuminance(c2);
+    const lighter = Math.max(l1, l2), darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function alphaComposite(fg, bg) {
+    // fg over bg, both have .r .g .b .a
+    const a = fg.a + bg.a * (1 - fg.a);
+    if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+    const blend = (cf, cb) => Math.round((cf * fg.a + cb * bg.a * (1 - fg.a)) / a);
+    return { r: blend(fg.r, bg.r), g: blend(fg.g, bg.g), b: blend(fg.b, bg.b), a };
+  }
+
+  function getEffectiveBackground(el) {
+    let current = el;
+    let bg = { r: 0, g: 0, b: 0, a: 0 }; // start transparent
+    const stack = [];
+
+    // Walk up ancestors collecting backgrounds
+    while (current && current !== document.documentElement) {
+      const cs = getComputedStyle(current);
+      const bgVal = cs.backgroundColor;
+      const parsed = parseColor(bgVal);
+      if (parsed && parsed.a > 0) stack.push(parsed);
+      current = current.parentElement;
+    }
+    // Add white page default
+    stack.push({ r: 255, g: 255, b: 255, a: 1 });
+
+    // Composite from bottom up
+    stack.reverse();
+    for (const layer of stack) {
+      bg = alphaComposite(layer, bg);
+    }
+    return bg;
+  }
+
+  function getContrastInfo(el) {
+    const cs = getComputedStyle(el);
+    const fgRaw = cs.color;
+    const bgRaw = cs.backgroundColor;
+    const fg = parseColor(fgRaw);
+    if (!fg) return null;
+
+    // Check if bg has gradient/image (can't determine)
+    const bgImage = cs.backgroundImage;
+    if (bgImage && bgImage !== 'none') {
+      return { fg, bg: null, ratio: null, undetermined: true };
+    }
+
+    const effectiveBg = getEffectiveBackground(el);
+    // If fg has alpha < 1, composite onto effective bg
+    const compositeFg = fg.a < 1 ? alphaComposite(fg, effectiveBg) : fg;
+
+    const ratio = contrastRatio(compositeFg, effectiveBg);
+    return { fg: compositeFg, bg: effectiveBg, ratio, undetermined: false };
+  }
+
+  function wcagBadge(ratio) {
+    if (ratio >= 7) return { label: 'AAA', cls: 'cg-badge-aaa' };
+    if (ratio >= 4.5) return { label: 'AA', cls: 'cg-badge-aa' };
+    if (ratio >= 3) return { label: 'AA Large', cls: 'cg-badge-aa-lg' };
+    return { label: 'Fail', cls: 'cg-badge-fail' };
+  }
+
+  // ── Color scanning ───────────────────────────────────────────────
   function scanColors(rootEl) {
     const colors = [];
-    const seenHex = new Set();
+    const seen = new Set();
     const elements = [rootEl, ...rootEl.querySelectorAll('*')];
 
     for (const el of elements) {
-      const cs = window.getComputedStyle(el);
-      const props = ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke'];
-      
-      for (const prop of props) {
+      const cs = getComputedStyle(el);
+      for (const prop of ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke']) {
         const val = cs.getPropertyValue(prop);
-        if (!val || val === 'transparent' || val === 'none' || val === 'initial' || val === 'inherit' || val === 'unset') continue;
-        if (isTransparent(val)) continue;
-
-        const hex = rgbToHex(val);
-        if (hex && !seenHex.has(hex)) {
-          seenHex.add(hex);
-          colors.push({ hex, rgb: val });
-        }
+        const parsed = parseColor(val);
+        if (!parsed) continue;
+        const hex = rgbaToHex(parsed);
+        if (seen.has(hex)) continue;
+        seen.add(hex);
+        colors.push({ ...parsed, hex, original: val });
       }
     }
     return colors;
   }
 
   function getSpacing(el, top, right, bottom, left) {
-    const cs = window.getComputedStyle(el);
+    const cs = getComputedStyle(el);
     const t = cs.getPropertyValue(top) || '0px';
     const r = cs.getPropertyValue(right) || '0px';
     const b = cs.getPropertyValue(bottom) || '0px';
@@ -263,183 +242,267 @@
     return `${t} ${r} ${b} ${l}`;
   }
 
+  // ── Tooltip CSS ──────────────────────────────────────────────────
+  const TOOLTIP_CSS = `
+    :host { all: initial; opacity: 0; transition: opacity .15s ease-out; }
+    #cg-tooltip { width: 280px; background: ${D.bg}; border: 1px solid ${D.border}; border-radius: ${D.radius}; box-shadow: ${D.shadow}; overflow: hidden; font-family: ${D.font}; animation: cg-in 150ms ease-out; }
+    #cg-header { background: ${D.grad}; padding: 8px 10px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+    .cg-logo { font-size: 12px; font-weight: 700; color: #fff; flex: 1; }
+    .cg-tag { font-size: 10px; font-family: monospace; color: rgba(255,255,255,.75); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cg-eyedropper-btn { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25); border-radius: 5px; padding: 3px 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 150ms; }
+    .cg-eyedropper-btn:hover { background: rgba(255,255,255,.28); }
+    #cg-body { padding: 10px 12px; }
+    .cg-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: ${D.muted}; margin-bottom: 6px; font-weight: 600; }
+    .cg-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .cg-label { font-size: 11px; color: ${D.muted}; }
+    .cg-value { font-size: 11px; color: ${D.value}; font-weight: 500; text-align: right; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cg-color-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 5px; cursor: pointer; pointer-events: auto; transition: background 100ms; margin-bottom: 3px; }
+    .cg-color-row:hover { background: rgba(34,197,94,.1); }
+    .cg-color-row.cg-copied { background: rgba(34,197,94,.2); }
+    .cg-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.15); flex-shrink: 0; }
+    .cg-hex { font-size: 11px; color: ${D.value}; font-weight: 500; font-family: monospace; }
+    .cg-secondary { font-size: 10px; color: ${D.muted}; font-family: monospace; margin-left: 4px; }
+    .cg-divider { height: 1px; background: ${D.border}; margin: 8px 0; }
+    #cg-footer { font-size: 9px; color: #4b5563; text-align: center; padding: 5px 0 7px; }
+    .cg-no-colors { font-size: 11px; color: ${D.muted}; font-style: italic; }
+    .cg-more { font-size: 10px; color: #6b7280; margin-top: 3px; text-align: center; }
+    .cg-contrast-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .cg-contrast-preview { display: flex; align-items: center; gap: 4px; }
+    .cg-contrast-swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(255,255,255,.15); }
+    .cg-contrast-ratio { font-size: 12px; color: ${D.value}; font-weight: 600; font-family: monospace; }
+    .cg-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+    .cg-badge-aaa { background: #166534; color: #bbf7d0; }
+    .cg-badge-aa { background: #15803d; color: #dcfce7; }
+    .cg-badge-aa-lg { background: #a16207; color: #fef3c7; }
+    .cg-badge-fail { background: #991b1b; color: #fecaca; }
+    .cg-badge-na { background: #374151; color: #9ca3af; }
+    .cg-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: ${D.bg2}; color: ${D.accent}; border: 1px solid ${D.accent}; border-radius: 8px; padding: 8px 16px; font-family: ${D.font}; font-size: 12px; font-weight: 600; z-index: 2147483647; pointer-events: none; animation: cg-toast-in .3s ease-out; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+    @keyframes cg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes cg-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { #cg-tooltip, .cg-toast { animation: none; } }
+  `;
+
+  const EYEDROPPER_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 10-10"/><path d="M12 12l9-9"/><path d="m15 15 3-3"/></svg>';
+
+  // ── DOM helpers (replaces innerHTML for untrusted data) ──────────
+  function el(tag, attrs, children) {
+    const e = document.createElement(tag);
+    if (attrs) {
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'text') e.textContent = v;
+        else if (k === 'html') e.innerHTML = v; // only for trusted static markup
+        else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+        else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+        else e.setAttribute(k, v);
+      }
+    }
+    if (children) {
+      for (const child of children) {
+        if (typeof child === 'string') e.appendChild(document.createTextNode(child));
+        else if (child) e.appendChild(child);
+      }
+    }
+    return e;
+  }
+
+  // ── Tooltip init ─────────────────────────────────────────────────
   function initTooltip() {
     if (host) return;
     host = document.createElement('div');
     host.id = 'colorgrab-tooltip-host';
-    // Explicitly set host styles for robustness
-    host.style.position = 'fixed';
-    host.style.zIndex = '2147483647';
-    host.style.pointerEvents = 'none'; // Default for host, overridden by children in shadow DOM
-    host.style.top = '0';
-    host.style.left = '0';
-    host.style.opacity = '0'; // Initial state, will be set to 1 on mouseover
-    host.style.transition = 'opacity 0.15s ease-out'; // Match :host transition
-    
+    Object.assign(host.style, {
+      position: 'fixed', zIndex: '2147483647', pointerEvents: 'none',
+      top: '0', left: '0', opacity: '0', transition: 'opacity .15s ease-out'
+    });
     (document.body || document.documentElement).appendChild(host);
     shadow = host.attachShadow({ mode: 'open' });
-    
-    const styleTag = document.createElement('style');
-    styleTag.textContent = TOOLTIP_CSS;
-    shadow.appendChild(styleTag);
-
-    const container = document.createElement('div');
-    container.id = 'cg-tooltip';
-    shadow.appendChild(container);
+    shadow.appendChild(el('style', { text: TOOLTIP_CSS }));
+    shadow.appendChild(el('div', { id: 'cg-tooltip' }));
   }
 
-  function updateTooltipContent(el) {
-    if (!shadow || !host) return; // Ensure host is also present
-    const cs = window.getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    const colors = scanColors(el);
-    
-    const tag = el.tagName.toLowerCase();
-    const id = el.id ? `#${el.id}` : '';
-    const cls = el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : '';
-    const elementLabel = `${tag}${cls}${id}`;
+  // ── Toast ────────────────────────────────────────────────────────
+  let _toastTimeout = null;
+  function showToast(message) {
+    if (!shadow) return;
+    let toast = shadow.querySelector('.cg-toast');
+    if (toast) toast.remove();
+    clearTimeout(_toastTimeout);
+    toast = el('div', { class: 'cg-toast', text: message });
+    shadow.appendChild(toast);
+    _toastTimeout = setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2000);
+  }
+
+  // ── Update tooltip ───────────────────────────────────────────────
+  function updateTooltipContent(target) {
+    if (!shadow || !host) return;
+    const cs = getComputedStyle(target);
+    const rect = target.getBoundingClientRect();
+    const colors = scanColors(target);
+    const contrastInfo = getContrastInfo(target);
+
+    const tag = target.tagName.toLowerCase();
+    const idStr = target.id ? `#${target.id}` : '';
+    const clsStr = target.className && typeof target.className === 'string'
+      ? '.' + target.className.trim().split(/\s+/).join('.') : '';
+    const elementLabel = `${tag}${clsStr}${idStr}`;
 
     const fontFamily = cs.getPropertyValue('font-family').split(',')[0].replace(/['"]/g, '').trim();
     const truncatedFont = fontFamily.length > 24 ? fontFamily.slice(0, 24) + '…' : fontFamily;
 
-    const colorRows = colors.slice(0, 12).map(c => `
-      <div class="cg-color-row" data-hex="${c.hex}">
-        <span class="cg-swatch" style="background:${c.rgb}"></span>
-        <span class="cg-hex">${c.hex}</span>
-        <span class="cg-rgb">| ${c.rgb}</span>
-      </div>
-    `).join('');
-
-    const colorSection = colors.length === 0 
-      ? `<div class="cg-no-colors">${t('noColors')}</div>` 
-      : colorRows + (colors.length > 12 ? `<div class="cg-more">${t('more', { count: colors.length - 12 })}</div>` : '');
-
     const tooltip = shadow.querySelector('#cg-tooltip');
     if (!tooltip) return;
 
-    tooltip.innerHTML = `
-      <div id="cg-header">
-        <span id="cg-logo">${t('brand')}</span>
-        <span id="cg-tag">${elementLabel}</span>
-        <button id="cg-eyedropper" aria-label="Pick color with eyedropper">${EYEDROPPER_SVG}</button>
-      </div>
-      <div id="cg-body">
-        <div class="cg-section">
-          <div class="cg-section-label">${t('colors')}</div>
-          <div id="cg-colors-list">${colorSection}</div>
-        </div>
-        <div class="cg-divider"></div>
-        <div class="cg-section">
-          <div class="cg-section-label">${t('typography')}</div>
-          <div class="cg-row"><span class="cg-label">${t('family')}</span><span class="cg-value">${truncatedFont}</span></div>
-          <div class="cg-row"><span class="cg-label">${t('size')}</span><span class="cg-value">${cs.getPropertyValue('font-size')}</span></div>
-          <div class="cg-row"><span class="cg-label">${t('weight')}</span><span class="cg-value">${cs.getPropertyValue('font-weight')}</span></div>
-        </div>
-        <div class="cg-divider"></div>
-        <div class="cg-section">
-          <div class="cg-section-label">${t('layout')}</div>
-          <div class="cg-row"><span class="cg-label">${t('size')}</span><span class="cg-value">${Math.round(rect.width)}px × ${Math.round(rect.height)}px</span></div>
-          <div class="cg-row"><span class="cg-label">${t('margin')}</span><span class="cg-value">${getSpacing(el, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}</span></div>
-          <div class="cg-row"><span class="cg-label">${t('padding')}</span><span class="cg-value">${getSpacing(el, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}</span></div>
-        </div>
-      </div>
-      <div id="cg-footer">${t('footer')}</div>
-    `;
+    // Clear and rebuild with DOM API (no innerHTML with untrusted data)
+    tooltip.textContent = '';
 
-    shadow.querySelector('#cg-eyedropper').addEventListener('click', handleEyedropper);
-    shadow.querySelectorAll('.cg-color-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const hex = row.getAttribute('data-hex');
-        copyToClipboard(hex).then(() => {
-          row.classList.add('cg-copied');
-          setTimeout(() => row.classList.remove('cg-copied'), 1000);
+    // Header
+    const header = el('div', { id: 'cg-header' }, [
+      el('span', { class: 'cg-logo', text: t('brand') }),
+      el('span', { class: 'cg-tag', text: elementLabel }),
+      el('button', { class: 'cg-eyedropper-btn', 'aria-label': 'Pick color with eyedropper', html: EYEDROPPER_SVG, onclick: handleEyedropper })
+    ]);
+    tooltip.appendChild(header);
+
+    // Body
+    const body = el('div', { id: 'cg-body' });
+
+    // Colors section
+    body.appendChild(el('div', { class: 'cg-section-label', text: t('colors') }));
+    if (colors.length === 0) {
+      body.appendChild(el('div', { class: 'cg-no-colors', text: t('noColors') }));
+    } else {
+      const colorList = el('div', { id: 'cg-colors-list' });
+      colors.slice(0, 12).forEach(c => {
+        const row = el('div', { class: 'cg-color-row' }, [
+          el('span', { class: 'cg-swatch', style: { background: rgbaToRgbStr(c) } }),
+          el('span', { class: 'cg-hex', text: formatColor(c) }),
+          el('span', { class: 'cg-secondary', text: copyFormat === 'hex' ? rgbaToRgbStr(c) : rgbaToHex(c) })
+        ]);
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const formatted = formatColor(c);
+          copyToClipboard(formatted).then(() => {
+            row.classList.add('cg-copied');
+            setTimeout(() => row.classList.remove('cg-copied'), 1000);
+            showToast(`${t('copied')} ${formatted}`);
+            // Save to history
+            chrome.runtime.sendMessage({ action: 'saveColor', color: { hex: c.hex, rgb: rgbaToRgbStr(c) } });
+          });
         });
+        colorList.appendChild(row);
       });
-    });
-  }
-
-  async function handleEyedropper() {
-    if (!window.EyeDropper) {
-      const header = shadow.querySelector('#cg-header');
-      if (!header) return;
-      const original = header.innerHTML;
-      header.innerHTML = `<span style="color:white; font-size:11px">${t('eyedropperUnsupported')}</span>`;
-      setTimeout(() => { 
-        if (currentTarget) updateTooltipContent(currentTarget); 
-      }, 2000);
-      return;
+      body.appendChild(colorList);
+      if (colors.length > 12) {
+        body.appendChild(el('div', { class: 'cg-more', text: t('more', { count: colors.length - 12 }) }));
+      }
     }
 
+    // Contrast section
+    body.appendChild(el('div', { class: 'cg-divider' }));
+    body.appendChild(el('div', { class: 'cg-section-label', text: t('contrast') }));
+    if (contrastInfo) {
+      const contrastRow = el('div', { class: 'cg-contrast-row' });
+      if (contrastInfo.undetermined) {
+        contrastRow.appendChild(el('span', { class: 'cg-label', text: t('contrastNote') }));
+        contrastRow.appendChild(el('span', { class: 'cg-badge cg-badge-na', text: t('undetermined') }));
+      } else {
+        const preview = el('div', { class: 'cg-contrast-preview' }, [
+          el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.fg) } }),
+          el('span', { class: 'cg-label', text: '/' }),
+          el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.bg) } })
+        ]);
+        contrastRow.appendChild(preview);
+        const r = Math.round(contrastInfo.ratio * 100) / 100;
+        contrastRow.appendChild(el('span', { class: 'cg-contrast-ratio', text: `${r}:1` }));
+        const badge = wcagBadge(contrastInfo.ratio);
+        contrastRow.appendChild(el('span', { class: `cg-badge ${badge.cls}`, text: badge.label }));
+      }
+      body.appendChild(contrastRow);
+    }
+
+    // Typography section
+    body.appendChild(el('div', { class: 'cg-divider' }));
+    body.appendChild(el('div', { class: 'cg-section-label', text: t('typography') }));
+    body.appendChild(makeRow(t('family'), truncatedFont));
+    body.appendChild(makeRow(t('size'), cs.getPropertyValue('font-size')));
+    body.appendChild(makeRow(t('weight'), cs.getPropertyValue('font-weight')));
+
+    // Layout section
+    body.appendChild(el('div', { class: 'cg-divider' }));
+    body.appendChild(el('div', { class: 'cg-section-label', text: t('layout') }));
+    body.appendChild(makeRow(t('size'), `${Math.round(rect.width)}px × ${Math.round(rect.height)}px`));
+    body.appendChild(makeRow(t('margin'), getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')));
+    body.appendChild(makeRow(t('padding'), getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')));
+
+    tooltip.appendChild(body);
+    tooltip.appendChild(el('div', { id: 'cg-footer', text: t('footer') }));
+  }
+
+  function makeRow(label, value) {
+    return el('div', { class: 'cg-row' }, [
+      el('span', { class: 'cg-label', text: label }),
+      el('span', { class: 'cg-value', text: value })
+    ]);
+  }
+
+  // ── EyeDropper ───────────────────────────────────────────────────
+  async function handleEyedropper() {
+    if (!window.EyeDropper) {
+      showToast(t('eyedropperUnsupported'));
+      return;
+    }
     const dropper = new EyeDropper();
     if (host) host.style.display = 'none';
     try {
       const result = await dropper.open();
-      const hex = result.sRGBHex;
-      const rgb = hexToRgb(hex);
-      await copyToClipboard(hex);
-      
-      const header = shadow.querySelector('#cg-header');
-      if (!header) return;
-      const original = header.innerHTML;
-      header.innerHTML = `<span style="color:white; font-size:11px">${t('copied')} ${hex} | ${rgb}</span>`;
-      setTimeout(() => {
-        if (currentTarget) updateTooltipContent(currentTarget);
-      }, 2000);
-    } catch (e) {
-      // User cancelled
-    } finally {
-      if (host) host.style.display = '';
-    }
+      const hex = result.sRGBHex.toUpperCase();
+      const parsed = parseColor(hex);
+      const formatted = parsed ? formatColor(parsed) : hex;
+      await copyToClipboard(formatted);
+      showToast(`${t('copied')} ${formatted}`);
+      chrome.runtime.sendMessage({ action: 'saveColor', color: { hex, rgb: parsed ? rgbaToRgbStr(parsed) : hex } });
+    } catch { /* user cancelled */ }
+    finally { if (host) host.style.display = ''; }
   }
 
   function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? `rgb(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)})` : '';
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? `rgb(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)})` : '';
   }
 
+  // ── Clipboard ────────────────────────────────────────────────────
   async function copyToClipboard(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      return success;
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
     }
   }
 
+  // ── Event handlers ───────────────────────────────────────────────
   const _onMouseover = (e) => {
     if (!isActive) return;
     if (host && (e.target === host || host.contains(e.target))) return;
-    
     if (currentTarget) currentTarget.removeAttribute('data-colorgrab-highlight');
-    
     currentTarget = e.target;
     currentTarget.setAttribute('data-colorgrab-highlight', '');
-    
     initTooltip();
     updateTooltipContent(currentTarget);
-    if (host) {
-      host.style.opacity = '1';
-      // host.style.transform = 'translateY(0)'; // Removed, handled by CSS transition on opacity
-    }
+    if (host) host.style.opacity = '1';
   };
 
   const _onMousemove = (e) => {
-    if (!isActive || !host || !shadow) return; // Ensure host and shadow are present
-    let left = e.clientX + 16;
-    let top = e.clientY + 12;
+    if (!isActive || !host || !shadow) return;
+    let left = e.clientX + 16, top = e.clientY + 12;
     const tooltip = shadow.querySelector('#cg-tooltip');
     if (!tooltip) return;
-
-    if (left + 268 > window.innerWidth) left = e.clientX - 284;
+    if (left + 280 > window.innerWidth) left = e.clientX - 296;
     if (top + tooltip.offsetHeight > window.innerHeight) top = e.clientY - tooltip.offsetHeight - 12;
-
     host.style.left = `${left}px`;
     host.style.top = `${top}px`;
   };
@@ -448,7 +511,6 @@
     if (!isActive) return;
     if (e.relatedTarget && currentTarget && (e.relatedTarget === currentTarget || currentTarget.contains(e.relatedTarget))) return;
     if (e.relatedTarget && host && host.contains(e.relatedTarget)) return;
-
     if (currentTarget) currentTarget.removeAttribute('data-colorgrab-highlight');
     if (host) host.style.opacity = '0';
     currentTarget = null;
@@ -459,22 +521,31 @@
     e.preventDefault();
     e.stopPropagation();
 
-    const cs = window.getComputedStyle(currentTarget);
+    const cs = getComputedStyle(currentTarget);
     const rect = currentTarget.getBoundingClientRect();
     const colors = scanColors(currentTarget);
-    
+    const contrastInfo = getContrastInfo(currentTarget);
+
     const tag = currentTarget.tagName.toLowerCase();
     const id = currentTarget.id ? `#${currentTarget.id}` : '';
-    const cls = currentTarget.className && typeof currentTarget.className === 'string' ? `.${currentTarget.className.trim().split(/\s+/).join('.')}` : '';
-    
-    const colorList = colors.map(c => `${c.hex} | ${c.rgb}`).join('\n');
+    const cls = currentTarget.className && typeof currentTarget.className === 'string'
+      ? '.' + currentTarget.className.trim().split(/\s+/).join('.') : '';
+
+    const colorList = colors.map(c => `${rgbaToHex(c)} | ${rgbaToRgbStr(c)} | ${rgbaToHsl(c)} | ${rgbaToOklch(c)}`).join('\n');
+
+    let contrastText = '';
+    if (contrastInfo && !contrastInfo.undetermined && contrastInfo.ratio) {
+      const r = Math.round(contrastInfo.ratio * 100) / 100;
+      const badge = wcagBadge(contrastInfo.ratio);
+      contrastText = `\n[${t('contrastBlock')}]\n${t('ratio')}: ${r}:1 (${badge.label})\n${t('textColor')}: ${contrastInfo.fg ? rgbaToHex(contrastInfo.fg) : '?'}\n${t('bgColor')}: ${contrastInfo.bg ? rgbaToHex(contrastInfo.bg) : '?'}`;
+    }
 
     const copyText = `${t('inspectorCopyTitle')}
 ${t('element')}: ${tag}${cls}${id}
 
 [${t('colorsBlock')}]
 ${colorList || t('noColorsBlock')}
-
+${contrastText}
 [${t('typographyBlock')}]
 ${t('fontFamily')}: ${cs.getPropertyValue('font-family').split(',')[0]}
 ${t('fontSize')}: ${cs.getPropertyValue('font-size')}
@@ -486,16 +557,7 @@ ${t('margin')}: ${getSpacing(currentTarget, 'margin-top', 'margin-right', 'margi
 ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
 
     copyToClipboard(copyText).then(() => {
-      const body = shadow.querySelector('#cg-body');
-      if (!body) return;
-      const original = body.innerHTML;
-      body.innerHTML = `<div class="cg-copied-flash">${t('copiedFlash')}</div>`;
-      setTimeout(() => { 
-        if (shadow) {
-          const currentBody = shadow.querySelector('#cg-body');
-          if (currentBody) currentBody.innerHTML = original;
-        }
-      }, 1500);
+      showToast(t('copiedFlash'));
     });
   };
 
@@ -507,32 +569,24 @@ ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'pa
     }
   };
 
+  // ── Activate / Deactivate ────────────────────────────────────────
   function activate() {
     if (isActive) return;
     isActive = true;
     const style = document.createElement('style');
     style.id = 'colorgrab-highlight-style';
-    style.textContent = `[data-colorgrab-highlight] { outline: 2px dashed ${DESIGN.accent1} !important; background-color: rgba(34, 197, 94, 0.08) !important; box-shadow: 0 0 0 2px ${DESIGN.accent1} !important; }`;
+    style.textContent = `[data-colorgrab-highlight] { outline: 2px dashed ${D.accent} !important; background-color: rgba(34,197,94,.08) !important; box-shadow: 0 0 0 2px ${D.accent} !important; }`;
     (document.head || document.documentElement).appendChild(style);
 
-    // Add status badge
     statusBadge = document.createElement('div');
     statusBadge.id = 'colorgrab-status-badge';
     statusBadge.textContent = t('statusBadge');
-    statusBadge.style.cssText = `
-      position: fixed;
-      bottom: 10px;
-      right: 10px;
-      background: ${DESIGN.accent1};
-      color: white;
-      font-family: sans-serif;
-      font-size: 12px;
-      font-weight: bold;
-      padding: 4px 8px;
-      border-radius: 4px;
-      z-index: 2147483647;
-      pointer-events: none;
-    `;
+    Object.assign(statusBadge.style, {
+      position: 'fixed', bottom: '10px', right: '10px',
+      background: D.accent, color: 'white', fontFamily: 'sans-serif',
+      fontSize: '12px', fontWeight: 'bold', padding: '4px 8px',
+      borderRadius: '4px', zIndex: '2147483647', pointerEvents: 'none'
+    });
     document.body.appendChild(statusBadge);
 
     document.addEventListener('mouseover', _onMouseover, true);
@@ -550,42 +604,35 @@ ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'pa
     document.removeEventListener('mouseout', _onMouseout, true);
     document.removeEventListener('click', _onClick, true);
     document.removeEventListener('keydown', _onKeydown);
-    
+
     if (currentTarget) currentTarget.removeAttribute('data-colorgrab-highlight');
     const style = document.getElementById('colorgrab-highlight-style');
     if (style) style.remove();
     if (host) host.remove();
-    host = null;
-    shadow = null;
-    currentTarget = null;
-
-    // Remove status badge
-    if (statusBadge) {
-      statusBadge.remove();
-      statusBadge = null;
-    }
+    host = null; shadow = null; currentTarget = null;
+    if (statusBadge) { statusBadge.remove(); statusBadge = null; }
   }
 
+  // ── Message handling ─────────────────────────────────────────────
   chrome.runtime.onMessage.addListener((request) => {
     if (request.action === 'setActive') {
-      if (request.isActive) activate();
-      else deactivate();
+      request.isActive ? activate() : deactivate();
     }
-
     if (request.action === 'setLanguage') {
       currentLanguage = request.language === 'vi' ? 'vi' : 'en';
-      if (currentTarget && host && shadow) {
-        updateTooltipContent(currentTarget);
-      }
-      if (statusBadge) {
-        statusBadge.textContent = t('statusBadge');
-      }
+      if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
+      if (statusBadge) statusBadge.textContent = t('statusBadge');
+    }
+    if (request.action === 'setCopyFormat') {
+      copyFormat = request.copyFormat || 'hex';
+      if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
     }
   });
 
-  // Initial state sync on content script load
-  chrome.storage.local.get(['isActive', 'language'], (data) => {
+  // ── Initial state ────────────────────────────────────────────────
+  chrome.storage.local.get(['isActive', 'language', 'copyFormat'], (data) => {
     currentLanguage = data.language === 'vi' ? 'vi' : 'en';
+    copyFormat = data.copyFormat || 'hex';
     if (data.isActive) activate();
   });
 

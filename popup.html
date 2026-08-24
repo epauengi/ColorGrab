@@ -8,13 +8,16 @@
 </head>
 <body>
   <div class="header-stripe"></div>
-  
+
   <div class="logo-row">
     <div class="brand-block">
       <span class="logo-text">⬡ ColorGrab</span>
-      <span class="version-badge">v1.0</span>
+      <span class="version-badge">v1.1</span>
     </div>
-    <button id="language-toggle" class="language-toggle" type="button" aria-label="Switch extension language">VI</button>
+    <div class="header-controls">
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle dark/light theme">🌙</button>
+      <button id="language-toggle" class="pill-btn" type="button" aria-label="Switch extension language">VI</button>
+    </div>
   </div>
 
   <div class="status-container">
@@ -22,11 +25,33 @@
       <input type="checkbox" id="inspector-toggle" class="toggle-input">
       <label for="inspector-toggle" class="toggle-label"></label>
     </div>
-    <span id="status-text" class="status-text">Inspector Inactive</span>
+    <div class="status-text-group">
+      <span id="status-text" class="status-text">Inspector Inactive</span>
+      <span id="status-description" class="status-description">Click toggle or press Alt+Shift+C</span>
+    </div>
   </div>
 
-  <div id="status-description" class="status-description">
-    Click the toggle to start inspecting
+  <div class="settings-row">
+    <label for="format-select" id="format-label" class="setting-label">Copy format</label>
+    <select id="format-select" class="select-input">
+      <option value="hex">HEX (#RRGGBB)</option>
+      <option value="rgb">RGB (rgb/rgba)</option>
+      <option value="hsl">HSL (hsl)</option>
+      <option value="oklch">OKLCH (oklch)</option>
+    </select>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Color History -->
+  <div class="history-section">
+    <div class="section-header">
+      <span id="history-title" class="section-title">Color History</span>
+      <button id="clear-history" class="text-btn" type="button" style="display:none">Clear</button>
+    </div>
+    <div id="history-grid" class="history-grid">
+      <span id="history-empty" class="history-empty">No colors grabbed yet</span>
+    </div>
   </div>
 
   <div class="divider"></div>
@@ -34,20 +59,20 @@
   <div class="tips-section">
     <div class="tip-row">
       <span class="tip-icon">🖱</span>
-      <span id="tip-hover" class="tip-text">Hover any element to see CSS</span>
+      <span id="tip-hover" class="tip-text">Hover any element to see CSS + WCAG contrast</span>
     </div>
     <div class="tip-row">
       <span class="tip-icon">📋</span>
-      <span id="tip-copy" class="tip-text">Click element to copy all values</span>
+      <span id="tip-copy" class="tip-text">Click element to copy CSS • Click swatch for single color</span>
     </div>
     <div class="tip-row">
       <span class="tip-icon">⌨</span>
-      <span id="tip-esc" class="tip-text">Press Esc to deactivate</span>
+      <span id="tip-shortcut" class="tip-text">Alt+Shift+C toggle • Esc deactivate</span>
     </div>
   </div>
 
   <div id="footer-text" class="footer">
-    ColorGrab • CSS Inspector
+    ColorGrab • CSS Inspector & Color Toolkit
   </div>
 
   <script src="popup.js"></script>
