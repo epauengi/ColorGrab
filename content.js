@@ -67,7 +67,6 @@
   }
 
   // ── Color conversion (CSS Color 4 safe) ──────────────────────────
-  // Canvas 1×1 normalizes ANY CSS color string to sRGB RGBA
   const _cvs = document.createElement('canvas');
   _cvs.width = _cvs.height = 1;
   const _ctx = _cvs.getContext('2d', { willReadFrequently: true });
@@ -75,13 +74,27 @@
   function parseColor(cssValue) {
     if (!cssValue || cssValue === 'transparent' || cssValue === 'none' ||
         cssValue === 'initial' || cssValue === 'inherit' || cssValue === 'unset') return null;
-    _ctx.clearRect(0, 0, 1, 1);
-    _ctx.fillStyle = '#00000000';
-    _ctx.fillStyle = cssValue;
-    _ctx.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = _ctx.getImageData(0, 0, 1, 1).data;
-    if (a === 0) return null; // fully transparent
-    return { r, g, b, a: a / 255 };
+
+    // Fast path: standard rgb/rgba (99% of getComputedStyle results)
+    const m = cssValue.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+    if (m) {
+      const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
+      if (a === 0) return null;
+      return { r: Math.round(parseFloat(m[1])), g: Math.round(parseFloat(m[2])), b: Math.round(parseFloat(m[3])), a };
+    }
+
+    // Fallback: Canvas 1×1 normalizer for CSS Color 4 (oklch, lab, color(), named)
+    try {
+      _ctx.clearRect(0, 0, 1, 1);
+      _ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+      _ctx.fillStyle = cssValue;
+      _ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = _ctx.getImageData(0, 0, 1, 1).data;
+      if (a === 0) return null;
+      return { r, g, b, a: a / 255 };
+    } catch {
+      return null;
+    }
   }
 
   function rgbaToHex(c) {
@@ -110,10 +123,8 @@
   }
 
   function rgbaToOklch(c) {
-    // sRGB → linear sRGB → OKLab → OKLCH
     const lin = v => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
     const R = lin(c.r), G = lin(c.g), B = lin(c.b);
-    // sRGB linear → LMS (using OKLab matrix)
     const l_ = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
     const m_ = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
     const s_ = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
@@ -151,7 +162,6 @@
   }
 
   function alphaComposite(fg, bg) {
-    // fg over bg, both have .r .g .b .a
     const a = fg.a + bg.a * (1 - fg.a);
     if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
     const blend = (cf, cb) => Math.round((cf * fg.a + cb * bg.a * (1 - fg.a)) / a);
@@ -160,21 +170,20 @@
 
   function getEffectiveBackground(el) {
     let current = el;
-    let bg = { r: 0, g: 0, b: 0, a: 0 }; // start transparent
+    let bg = { r: 0, g: 0, b: 0, a: 0 };
     const stack = [];
 
-    // Walk up ancestors collecting backgrounds
-    while (current && current !== document.documentElement) {
-      const cs = getComputedStyle(current);
-      const bgVal = cs.backgroundColor;
-      const parsed = parseColor(bgVal);
-      if (parsed && parsed.a > 0) stack.push(parsed);
+    while (current && current instanceof Element) {
+      try {
+        const cs = getComputedStyle(current);
+        const bgVal = cs.backgroundColor;
+        const parsed = parseColor(bgVal);
+        if (parsed && parsed.a > 0) stack.push(parsed);
+      } catch { /* ignore */ }
       current = current.parentElement;
     }
-    // Add white page default
     stack.push({ r: 255, g: 255, b: 255, a: 1 });
 
-    // Composite from bottom up
     stack.reverse();
     for (const layer of stack) {
       bg = alphaComposite(layer, bg);
@@ -183,24 +192,24 @@
   }
 
   function getContrastInfo(el) {
-    const cs = getComputedStyle(el);
-    const fgRaw = cs.color;
-    const bgRaw = cs.backgroundColor;
-    const fg = parseColor(fgRaw);
-    if (!fg) return null;
+    try {
+      const cs = getComputedStyle(el);
+      const fgRaw = cs.color;
+      const fg = parseColor(fgRaw);
+      if (!fg) return null;
 
-    // Check if bg has gradient/image (can't determine)
-    const bgImage = cs.backgroundImage;
-    if (bgImage && bgImage !== 'none') {
-      return { fg, bg: null, ratio: null, undetermined: true };
+      const bgImage = cs.backgroundImage;
+      if (bgImage && bgImage !== 'none') {
+        return { fg, bg: null, ratio: null, undetermined: true };
+      }
+
+      const effectiveBg = getEffectiveBackground(el);
+      const compositeFg = fg.a < 1 ? alphaComposite(fg, effectiveBg) : fg;
+      const ratio = contrastRatio(compositeFg, effectiveBg);
+      return { fg: compositeFg, bg: effectiveBg, ratio, undetermined: false };
+    } catch {
+      return null;
     }
-
-    const effectiveBg = getEffectiveBackground(el);
-    // If fg has alpha < 1, composite onto effective bg
-    const compositeFg = fg.a < 1 ? alphaComposite(fg, effectiveBg) : fg;
-
-    const ratio = contrastRatio(compositeFg, effectiveBg);
-    return { fg: compositeFg, bg: effectiveBg, ratio, undetermined: false };
   }
 
   function wcagBadge(ratio) {
@@ -210,41 +219,55 @@
     return { label: 'Fail', cls: 'cg-badge-fail' };
   }
 
-  // ── Color scanning ───────────────────────────────────────────────
+  // ── Color scanning (capped for instantaneous response) ───────────
   function scanColors(rootEl) {
     const colors = [];
     const seen = new Set();
-    const elements = [rootEl, ...rootEl.querySelectorAll('*')];
+    const elements = [rootEl];
+    try {
+      const children = rootEl.querySelectorAll('*');
+      const limit = Math.min(children.length, 30);
+      for (let i = 0; i < limit; i++) {
+        elements.push(children[i]);
+      }
+    } catch { /* ignore */ }
 
     for (const el of elements) {
-      const cs = getComputedStyle(el);
-      for (const prop of ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke']) {
-        const val = cs.getPropertyValue(prop);
-        const parsed = parseColor(val);
-        if (!parsed) continue;
-        const hex = rgbaToHex(parsed);
-        if (seen.has(hex)) continue;
-        seen.add(hex);
-        colors.push({ ...parsed, hex, original: val });
-      }
+      try {
+        const cs = getComputedStyle(el);
+        for (const prop of ['color', 'backgroundColor', 'borderTopColor', 'fill', 'stroke']) {
+          const val = cs.getPropertyValue(prop);
+          const parsed = parseColor(val);
+          if (!parsed) continue;
+          const hex = rgbaToHex(parsed);
+          if (seen.has(hex)) continue;
+          seen.add(hex);
+          colors.push({ ...parsed, hex, original: val });
+          if (colors.length >= 16) break;
+        }
+      } catch { /* ignore */ }
+      if (colors.length >= 16) break;
     }
     return colors;
   }
 
   function getSpacing(el, top, right, bottom, left) {
-    const cs = getComputedStyle(el);
-    const t = cs.getPropertyValue(top) || '0px';
-    const r = cs.getPropertyValue(right) || '0px';
-    const b = cs.getPropertyValue(bottom) || '0px';
-    const l = cs.getPropertyValue(left) || '0px';
-    if (t === r && r === b && b === l) return t;
-    if (t === b && r === l) return `${t} ${r}`;
-    return `${t} ${r} ${b} ${l}`;
+    try {
+      const cs = getComputedStyle(el);
+      const t = cs.getPropertyValue(top) || '0px';
+      const r = cs.getPropertyValue(right) || '0px';
+      const b = cs.getPropertyValue(bottom) || '0px';
+      const l = cs.getPropertyValue(left) || '0px';
+      if (t === r && r === b && b === l) return t;
+      if (t === b && r === l) return `${t} ${r}`;
+      return `${t} ${r} ${b} ${l}`;
+    } catch {
+      return '0px';
+    }
   }
 
   // ── Tooltip CSS ──────────────────────────────────────────────────
   const TOOLTIP_CSS = `
-    :host { all: initial; opacity: 0; transition: opacity .15s ease-out; }
     #cg-tooltip { width: 280px; background: ${D.bg}; border: 1px solid ${D.border}; border-radius: ${D.radius}; box-shadow: ${D.shadow}; overflow: hidden; font-family: ${D.font}; animation: cg-in 150ms ease-out; }
     #cg-header { background: ${D.grad}; padding: 8px 10px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
     .cg-logo { font-size: 12px; font-weight: 700; color: #fff; flex: 1; }
@@ -284,13 +307,13 @@
 
   const EYEDROPPER_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 10-10"/><path d="M12 12l9-9"/><path d="m15 15 3-3"/></svg>';
 
-  // ── DOM helpers (replaces innerHTML for untrusted data) ──────────
+  // ── DOM helpers ──────────────────────────────────────────────────
   function el(tag, attrs, children) {
     const e = document.createElement(tag);
     if (attrs) {
       for (const [k, v] of Object.entries(attrs)) {
         if (k === 'text') e.textContent = v;
-        else if (k === 'html') e.innerHTML = v; // only for trusted static markup
+        else if (k === 'html') e.innerHTML = v;
         else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
         else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
         else e.setAttribute(k, v);
@@ -320,6 +343,26 @@
     shadow.appendChild(el('div', { id: 'cg-tooltip' }));
   }
 
+  // ── Positioning ──────────────────────────────────────────────────
+  function updatePosition(clientX, clientY) {
+    if (!host || !shadow) return;
+    const tooltip = shadow.querySelector('#cg-tooltip');
+    const h = tooltip ? tooltip.offsetHeight : 220;
+    const w = 280;
+
+    let left = clientX + 16;
+    let top = clientY + 12;
+
+    if (left + w > window.innerWidth) left = clientX - w - 16;
+    if (top + h > window.innerHeight) top = clientY - h - 12;
+
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+
+    host.style.left = `${left}px`;
+    host.style.top = `${top}px`;
+  }
+
   // ── Toast ────────────────────────────────────────────────────────
   let _toastTimeout = null;
   function showToast(message) {
@@ -332,110 +375,116 @@
     _toastTimeout = setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2000);
   }
 
-  // ── Update tooltip ───────────────────────────────────────────────
+  // ── Update tooltip content ───────────────────────────────────────
   function updateTooltipContent(target) {
     if (!shadow || !host) return;
-    const cs = getComputedStyle(target);
-    const rect = target.getBoundingClientRect();
-    const colors = scanColors(target);
-    const contrastInfo = getContrastInfo(target);
+    try {
+      const cs = getComputedStyle(target);
+      const rect = target.getBoundingClientRect();
+      const colors = scanColors(target);
+      const contrastInfo = getContrastInfo(target);
 
-    const tag = target.tagName.toLowerCase();
-    const idStr = target.id ? `#${target.id}` : '';
-    const clsStr = target.className && typeof target.className === 'string'
-      ? '.' + target.className.trim().split(/\s+/).join('.') : '';
-    const elementLabel = `${tag}${clsStr}${idStr}`;
-
-    const fontFamily = cs.getPropertyValue('font-family').split(',')[0].replace(/['"]/g, '').trim();
-    const truncatedFont = fontFamily.length > 24 ? fontFamily.slice(0, 24) + '…' : fontFamily;
-
-    const tooltip = shadow.querySelector('#cg-tooltip');
-    if (!tooltip) return;
-
-    // Clear and rebuild with DOM API (no innerHTML with untrusted data)
-    tooltip.textContent = '';
-
-    // Header
-    const header = el('div', { id: 'cg-header' }, [
-      el('span', { class: 'cg-logo', text: t('brand') }),
-      el('span', { class: 'cg-tag', text: elementLabel }),
-      el('button', { class: 'cg-eyedropper-btn', 'aria-label': 'Pick color with eyedropper', html: EYEDROPPER_SVG, onclick: handleEyedropper })
-    ]);
-    tooltip.appendChild(header);
-
-    // Body
-    const body = el('div', { id: 'cg-body' });
-
-    // Colors section
-    body.appendChild(el('div', { class: 'cg-section-label', text: t('colors') }));
-    if (colors.length === 0) {
-      body.appendChild(el('div', { class: 'cg-no-colors', text: t('noColors') }));
-    } else {
-      const colorList = el('div', { id: 'cg-colors-list' });
-      colors.slice(0, 12).forEach(c => {
-        const row = el('div', { class: 'cg-color-row' }, [
-          el('span', { class: 'cg-swatch', style: { background: rgbaToRgbStr(c) } }),
-          el('span', { class: 'cg-hex', text: formatColor(c) }),
-          el('span', { class: 'cg-secondary', text: copyFormat === 'hex' ? rgbaToRgbStr(c) : rgbaToHex(c) })
-        ]);
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const formatted = formatColor(c);
-          copyToClipboard(formatted).then(() => {
-            row.classList.add('cg-copied');
-            setTimeout(() => row.classList.remove('cg-copied'), 1000);
-            showToast(`${t('copied')} ${formatted}`);
-            // Save to history
-            chrome.runtime.sendMessage({ action: 'saveColor', color: { hex: c.hex, rgb: rgbaToRgbStr(c) } });
-          });
-        });
-        colorList.appendChild(row);
-      });
-      body.appendChild(colorList);
-      if (colors.length > 12) {
-        body.appendChild(el('div', { class: 'cg-more', text: t('more', { count: colors.length - 12 }) }));
+      const tag = (target.tagName || 'div').toLowerCase();
+      const idStr = target.id ? `#${target.id}` : '';
+      let clsStr = '';
+      if (typeof target.className === 'string' && target.className.trim()) {
+        clsStr = '.' + target.className.trim().split(/\s+/).slice(0, 3).join('.');
+      } else if (target.className && typeof target.className.baseVal === 'string' && target.className.baseVal.trim()) {
+        clsStr = '.' + target.className.baseVal.trim().split(/\s+/).slice(0, 3).join('.');
       }
-    }
+      const elementLabel = `${tag}${clsStr}${idStr}`;
 
-    // Contrast section
-    body.appendChild(el('div', { class: 'cg-divider' }));
-    body.appendChild(el('div', { class: 'cg-section-label', text: t('contrast') }));
-    if (contrastInfo) {
-      const contrastRow = el('div', { class: 'cg-contrast-row' });
-      if (contrastInfo.undetermined) {
-        contrastRow.appendChild(el('span', { class: 'cg-label', text: t('contrastNote') }));
-        contrastRow.appendChild(el('span', { class: 'cg-badge cg-badge-na', text: t('undetermined') }));
+      const fontRaw = cs.getPropertyValue('font-family') || '';
+      const fontFamily = fontRaw.split(',')[0].replace(/['"]/g, '').trim() || 'inherit';
+      const truncatedFont = fontFamily.length > 22 ? fontFamily.slice(0, 22) + '…' : fontFamily;
+
+      const tooltip = shadow.querySelector('#cg-tooltip');
+      if (!tooltip) return;
+      tooltip.textContent = '';
+
+      // Header
+      const header = el('div', { id: 'cg-header' }, [
+        el('span', { class: 'cg-logo', text: t('brand') }),
+        el('span', { class: 'cg-tag', text: elementLabel }),
+        el('button', { class: 'cg-eyedropper-btn', 'aria-label': 'Pick color with eyedropper', html: EYEDROPPER_SVG, onclick: handleEyedropper })
+      ]);
+      tooltip.appendChild(header);
+
+      // Body
+      const body = el('div', { id: 'cg-body' });
+
+      // Colors section
+      body.appendChild(el('div', { class: 'cg-section-label', text: t('colors') }));
+      if (colors.length === 0) {
+        body.appendChild(el('div', { class: 'cg-no-colors', text: t('noColors') }));
       } else {
-        const preview = el('div', { class: 'cg-contrast-preview' }, [
-          el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.fg) } }),
-          el('span', { class: 'cg-label', text: '/' }),
-          el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.bg) } })
-        ]);
-        contrastRow.appendChild(preview);
-        const r = Math.round(contrastInfo.ratio * 100) / 100;
-        contrastRow.appendChild(el('span', { class: 'cg-contrast-ratio', text: `${r}:1` }));
-        const badge = wcagBadge(contrastInfo.ratio);
-        contrastRow.appendChild(el('span', { class: `cg-badge ${badge.cls}`, text: badge.label }));
+        const colorList = el('div', { id: 'cg-colors-list' });
+        colors.slice(0, 12).forEach(c => {
+          const row = el('div', { class: 'cg-color-row' }, [
+            el('span', { class: 'cg-swatch', style: { background: rgbaToRgbStr(c) } }),
+            el('span', { class: 'cg-hex', text: formatColor(c) }),
+            el('span', { class: 'cg-secondary', text: copyFormat === 'hex' ? rgbaToRgbStr(c) : rgbaToHex(c) })
+          ]);
+          row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const formatted = formatColor(c);
+            copyToClipboard(formatted).then(() => {
+              row.classList.add('cg-copied');
+              setTimeout(() => row.classList.remove('cg-copied'), 1000);
+              showToast(`${t('copied')} ${formatted}`);
+              chrome.runtime.sendMessage({ action: 'saveColor', color: { hex: c.hex, rgb: rgbaToRgbStr(c) } });
+            });
+          });
+          colorList.appendChild(row);
+        });
+        body.appendChild(colorList);
+        if (colors.length > 12) {
+          body.appendChild(el('div', { class: 'cg-more', text: t('more', { count: colors.length - 12 }) }));
+        }
       }
-      body.appendChild(contrastRow);
+
+      // Contrast section (only if text contrast is present)
+      if (contrastInfo) {
+        body.appendChild(el('div', { class: 'cg-divider' }));
+        body.appendChild(el('div', { class: 'cg-section-label', text: t('contrast') }));
+        const contrastRow = el('div', { class: 'cg-contrast-row' });
+        if (contrastInfo.undetermined) {
+          contrastRow.appendChild(el('span', { class: 'cg-label', text: t('contrastNote') }));
+          contrastRow.appendChild(el('span', { class: 'cg-badge cg-badge-na', text: t('undetermined') }));
+        } else {
+          const preview = el('div', { class: 'cg-contrast-preview' }, [
+            el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.fg) } }),
+            el('span', { class: 'cg-label', text: '/' }),
+            el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.bg) } })
+          ]);
+          contrastRow.appendChild(preview);
+          const r = Math.round(contrastInfo.ratio * 100) / 100;
+          contrastRow.appendChild(el('span', { class: 'cg-contrast-ratio', text: `${r}:1` }));
+          const badge = wcagBadge(contrastInfo.ratio);
+          contrastRow.appendChild(el('span', { class: `cg-badge ${badge.cls}`, text: badge.label }));
+        }
+        body.appendChild(contrastRow);
+      }
+
+      // Typography section
+      body.appendChild(el('div', { class: 'cg-divider' }));
+      body.appendChild(el('div', { class: 'cg-section-label', text: t('typography') }));
+      body.appendChild(makeRow(t('family'), truncatedFont));
+      body.appendChild(makeRow(t('size'), cs.getPropertyValue('font-size') || 'inherit'));
+      body.appendChild(makeRow(t('weight'), cs.getPropertyValue('font-weight') || 'normal'));
+
+      // Layout section
+      body.appendChild(el('div', { class: 'cg-divider' }));
+      body.appendChild(el('div', { class: 'cg-section-label', text: t('layout') }));
+      body.appendChild(makeRow(t('size'), `${Math.round(rect.width)}px × ${Math.round(rect.height)}px`));
+      body.appendChild(makeRow(t('margin'), getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')));
+      body.appendChild(makeRow(t('padding'), getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')));
+
+      tooltip.appendChild(body);
+      tooltip.appendChild(el('div', { id: 'cg-footer', text: t('footer') }));
+    } catch (err) {
+      console.error('ColorGrab update error:', err);
     }
-
-    // Typography section
-    body.appendChild(el('div', { class: 'cg-divider' }));
-    body.appendChild(el('div', { class: 'cg-section-label', text: t('typography') }));
-    body.appendChild(makeRow(t('family'), truncatedFont));
-    body.appendChild(makeRow(t('size'), cs.getPropertyValue('font-size')));
-    body.appendChild(makeRow(t('weight'), cs.getPropertyValue('font-weight')));
-
-    // Layout section
-    body.appendChild(el('div', { class: 'cg-divider' }));
-    body.appendChild(el('div', { class: 'cg-section-label', text: t('layout') }));
-    body.appendChild(makeRow(t('size'), `${Math.round(rect.width)}px × ${Math.round(rect.height)}px`));
-    body.appendChild(makeRow(t('margin'), getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')));
-    body.appendChild(makeRow(t('padding'), getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')));
-
-    tooltip.appendChild(body);
-    tooltip.appendChild(el('div', { id: 'cg-footer', text: t('footer') }));
   }
 
   function makeRow(label, value) {
@@ -465,11 +514,6 @@
     finally { if (host) host.style.display = ''; }
   }
 
-  function hexToRgb(hex) {
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return m ? `rgb(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)})` : '';
-  }
-
   // ── Clipboard ────────────────────────────────────────────────────
   async function copyToClipboard(text) {
     try { await navigator.clipboard.writeText(text); return true; }
@@ -487,24 +531,26 @@
   // ── Event handlers ───────────────────────────────────────────────
   const _onMouseover = (e) => {
     if (!isActive) return;
-    if (host && (e.target === host || host.contains(e.target))) return;
-    if (currentTarget) currentTarget.removeAttribute('data-colorgrab-highlight');
-    currentTarget = e.target;
+    const target = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
+    if (!target || !(target instanceof Element)) return;
+    if (host && (target === host || host.contains(target))) return;
+    if (target === statusBadge) return;
+
+    if (currentTarget && currentTarget !== target) {
+      currentTarget.removeAttribute('data-colorgrab-highlight');
+    }
+    currentTarget = target;
     currentTarget.setAttribute('data-colorgrab-highlight', '');
+
     initTooltip();
     updateTooltipContent(currentTarget);
+    updatePosition(e.clientX, e.clientY);
     if (host) host.style.opacity = '1';
   };
 
   const _onMousemove = (e) => {
-    if (!isActive || !host || !shadow) return;
-    let left = e.clientX + 16, top = e.clientY + 12;
-    const tooltip = shadow.querySelector('#cg-tooltip');
-    if (!tooltip) return;
-    if (left + 280 > window.innerWidth) left = e.clientX - 296;
-    if (top + tooltip.offsetHeight > window.innerHeight) top = e.clientY - tooltip.offsetHeight - 12;
-    host.style.left = `${left}px`;
-    host.style.top = `${top}px`;
+    if (!isActive || !host) return;
+    updatePosition(e.clientX, e.clientY);
   };
 
   const _onMouseout = (e) => {
@@ -518,29 +564,36 @@
 
   const _onClick = (e) => {
     if (!isActive || !currentTarget) return;
+    const target = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
+    if (host && (target === host || host.contains(target))) return;
+    if (target === statusBadge) return;
+
     e.preventDefault();
     e.stopPropagation();
 
-    const cs = getComputedStyle(currentTarget);
-    const rect = currentTarget.getBoundingClientRect();
-    const colors = scanColors(currentTarget);
-    const contrastInfo = getContrastInfo(currentTarget);
+    try {
+      const cs = getComputedStyle(currentTarget);
+      const rect = currentTarget.getBoundingClientRect();
+      const colors = scanColors(currentTarget);
+      const contrastInfo = getContrastInfo(currentTarget);
 
-    const tag = currentTarget.tagName.toLowerCase();
-    const id = currentTarget.id ? `#${currentTarget.id}` : '';
-    const cls = currentTarget.className && typeof currentTarget.className === 'string'
-      ? '.' + currentTarget.className.trim().split(/\s+/).join('.') : '';
+      const tag = (currentTarget.tagName || 'div').toLowerCase();
+      const id = currentTarget.id ? `#${currentTarget.id}` : '';
+      let cls = '';
+      if (typeof currentTarget.className === 'string' && currentTarget.className.trim()) {
+        cls = '.' + currentTarget.className.trim().split(/\s+/).slice(0, 3).join('.');
+      }
 
-    const colorList = colors.map(c => `${rgbaToHex(c)} | ${rgbaToRgbStr(c)} | ${rgbaToHsl(c)} | ${rgbaToOklch(c)}`).join('\n');
+      const colorList = colors.map(c => `${rgbaToHex(c)} | ${rgbaToRgbStr(c)} | ${rgbaToHsl(c)} | ${rgbaToOklch(c)}`).join('\n');
 
-    let contrastText = '';
-    if (contrastInfo && !contrastInfo.undetermined && contrastInfo.ratio) {
-      const r = Math.round(contrastInfo.ratio * 100) / 100;
-      const badge = wcagBadge(contrastInfo.ratio);
-      contrastText = `\n[${t('contrastBlock')}]\n${t('ratio')}: ${r}:1 (${badge.label})\n${t('textColor')}: ${contrastInfo.fg ? rgbaToHex(contrastInfo.fg) : '?'}\n${t('bgColor')}: ${contrastInfo.bg ? rgbaToHex(contrastInfo.bg) : '?'}`;
-    }
+      let contrastText = '';
+      if (contrastInfo && !contrastInfo.undetermined && contrastInfo.ratio) {
+        const r = Math.round(contrastInfo.ratio * 100) / 100;
+        const badge = wcagBadge(contrastInfo.ratio);
+        contrastText = `\n[${t('contrastBlock')}]\n${t('ratio')}: ${r}:1 (${badge.label})\n${t('textColor')}: ${contrastInfo.fg ? rgbaToHex(contrastInfo.fg) : '?'}\n${t('bgColor')}: ${contrastInfo.bg ? rgbaToHex(contrastInfo.bg) : '?'}`;
+      }
 
-    const copyText = `${t('inspectorCopyTitle')}
+      const copyText = `${t('inspectorCopyTitle')}
 ${t('element')}: ${tag}${cls}${id}
 
 [${t('colorsBlock')}]
@@ -556,9 +609,12 @@ ${t('size')}: ${Math.round(rect.width)}px × ${Math.round(rect.height)}px
 ${t('margin')}: ${getSpacing(currentTarget, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}
 ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
 
-    copyToClipboard(copyText).then(() => {
-      showToast(t('copiedFlash'));
-    });
+      copyToClipboard(copyText).then(() => {
+        showToast(t('copiedFlash'));
+      });
+    } catch (err) {
+      console.error('ColorGrab click error:', err);
+    }
   };
 
   const _onKeydown = (e) => {
@@ -587,7 +643,7 @@ ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'pa
       fontSize: '12px', fontWeight: 'bold', padding: '4px 8px',
       borderRadius: '4px', zIndex: '2147483647', pointerEvents: 'none'
     });
-    document.body.appendChild(statusBadge);
+    (document.body || document.documentElement).appendChild(statusBadge);
 
     document.addEventListener('mouseover', _onMouseover, true);
     document.addEventListener('mousemove', _onMousemove, true);
@@ -613,27 +669,47 @@ ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'pa
     if (statusBadge) { statusBadge.remove(); statusBadge = null; }
   }
 
-  // ── Message handling ─────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'setActive') {
-      request.isActive ? activate() : deactivate();
+  // ── Storage change listener (syncs across tabs live) ─────────────
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes.isActive !== undefined) {
+      changes.isActive.newValue ? activate() : deactivate();
     }
-    if (request.action === 'setLanguage') {
-      currentLanguage = request.language === 'vi' ? 'vi' : 'en';
+    if (changes.language !== undefined) {
+      currentLanguage = changes.language.newValue === 'vi' ? 'vi' : 'en';
       if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
       if (statusBadge) statusBadge.textContent = t('statusBadge');
     }
-    if (request.action === 'setCopyFormat') {
-      copyFormat = request.copyFormat || 'hex';
+    if (changes.copyFormat !== undefined) {
+      copyFormat = changes.copyFormat.newValue || 'hex';
       if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
     }
   });
 
-  // ── Initial state ────────────────────────────────────────────────
+  // ── Runtime message listener (direct tab messaging) ──────────────
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'setActive') {
+      request.isActive ? activate() : deactivate();
+      sendResponse?.({ status: 'ok', isActive });
+    } else if (request.action === 'setLanguage') {
+      currentLanguage = request.language === 'vi' ? 'vi' : 'en';
+      if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
+      if (statusBadge) statusBadge.textContent = t('statusBadge');
+      sendResponse?.({ status: 'ok' });
+    } else if (request.action === 'setCopyFormat') {
+      copyFormat = request.copyFormat || 'hex';
+      if (currentTarget && host && shadow) updateTooltipContent(currentTarget);
+      sendResponse?.({ status: 'ok' });
+    } else if (request.action === 'ping') {
+      sendResponse?.({ status: 'pong', isActive });
+    }
+  });
+
+  // ── Initial state on load ─────────────────────────────────────────
   chrome.storage.local.get(['isActive', 'language', 'copyFormat'], (data) => {
-    currentLanguage = data.language === 'vi' ? 'vi' : 'en';
-    copyFormat = data.copyFormat || 'hex';
-    if (data.isActive) activate();
+    currentLanguage = data?.language === 'vi' ? 'vi' : 'en';
+    copyFormat = data?.copyFormat || 'hex';
+    if (data?.isActive) activate();
   });
 
 })();

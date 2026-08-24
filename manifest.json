@@ -17,6 +17,18 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "commands": {
     "toggle-inspector": {
       "suggested_key": { "default": "Alt+Shift+C", "mac": "Alt+Shift+C" },

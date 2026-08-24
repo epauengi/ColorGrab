@@ -188,11 +188,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Tab messaging helper ─────────────────────────────────────────
   async function notifyTab(message) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
+    if (!tab?.id || !tab.url || !tab.url.startsWith('http')) return;
     try {
       await chrome.tabs.sendMessage(tab.id, message);
     } catch {
-      // Content script may not be injected yet
+      // Content script may not be injected yet (e.g. tab was open before extension reload)
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        });
+        // Retry message after injection
+        await chrome.tabs.sendMessage(tab.id, message);
+      } catch (err) {
+        console.log('Unable to inject content script:', err.message);
+      }
     }
   }
 
