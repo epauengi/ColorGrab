@@ -5,6 +5,7 @@
   window.__COLORGRAB_INITIALIZED__ = true;
 
   let isActive = false;
+  let isPinned = false;
   let currentTarget = null;
   let host = null;
   let shadow = null;
@@ -29,7 +30,7 @@
       brand: '⬡ ColorGrab', colors: 'COLORS', typography: 'TYPOGRAPHY',
       layout: 'LAYOUT', contrast: 'CONTRAST', family: 'Family', size: 'Size',
       weight: 'Weight', margin: 'Margin', padding: 'Padding',
-      footer: 'Click to copy all • Click color swatch to copy',
+      footer: 'Click element to pin • Esc to quit',
       noColors: 'No colors found', more: '…and {count} more',
       eyedropperUnsupported: 'EyeDropper not supported',
       copied: '✓ Copied:', copiedFlash: '✓ Copied!',
@@ -39,13 +40,15 @@
       fontSize: 'Font Size', fontWeight: 'Font Weight', layoutBlock: 'Layout',
       contrastBlock: 'Contrast', textColor: 'Text', bgColor: 'Background',
       ratio: 'Ratio', statusBadge: 'CG', undetermined: 'N/A',
-      contrastNote: 'alpha/gradient — cannot determine'
+      contrastNote: 'alpha/gradient — cannot determine',
+      copyAll: 'Copy all', copyColor: 'Copy color', copySize: 'Copy size',
+      copyRow: 'Copy', closePin: 'Close'
     },
     vi: {
       brand: '⬡ ColorGrab', colors: 'MÀU SẮC', typography: 'CHỮ',
       layout: 'BỐ CỤC', contrast: 'TƯƠNG PHẢN', family: 'Phông', size: 'Kích thước',
       weight: 'Độ đậm', margin: 'Lề ngoài', padding: 'Lề trong',
-      footer: 'Nhấp để sao chép toàn bộ • Nhấp ô màu để sao chép',
+      footer: 'Nhấp phần tử để ghim • Esc để thoát',
       noColors: 'Không tìm thấy màu', more: '…và thêm {count} màu',
       eyedropperUnsupported: 'EyeDropper không được hỗ trợ',
       copied: '✓ Đã sao chép:', copiedFlash: '✓ Đã sao chép!',
@@ -55,7 +58,9 @@
       fontSize: 'Cỡ chữ', fontWeight: 'Độ đậm', layoutBlock: 'Bố cục',
       contrastBlock: 'Tương phản', textColor: 'Chữ', bgColor: 'Nền',
       ratio: 'Tỉ lệ', statusBadge: 'CG', undetermined: 'N/A',
-      contrastNote: 'alpha/gradient — không xác định được'
+      contrastNote: 'alpha/gradient — không xác định được',
+      copyAll: 'Sao chép tất cả', copyColor: 'Sao chép màu', copySize: 'Sao chép kích thước',
+      copyRow: 'Sao chép', closePin: 'Đóng'
     }
   };
 
@@ -269,16 +274,27 @@
   // ── Tooltip CSS ──────────────────────────────────────────────────
   const TOOLTIP_CSS = `
     #cg-tooltip { width: 280px; background: ${D.bg}; border: 1px solid ${D.border}; border-radius: ${D.radius}; box-shadow: ${D.shadow}; overflow: hidden; font-family: ${D.font}; animation: cg-in 150ms ease-out; }
+    #cg-tooltip.cg-pinned { border-color: ${D.accent}; }
     #cg-header { background: ${D.grad}; padding: 8px 10px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
     .cg-logo { font-size: 12px; font-weight: 700; color: #fff; flex: 1; }
     .cg-tag { font-size: 10px; font-family: monospace; color: rgba(255,255,255,.75); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cg-eyedropper-btn { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25); border-radius: 5px; padding: 3px 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 150ms; }
-    .cg-eyedropper-btn:hover { background: rgba(255,255,255,.28); }
+    .cg-eyedropper-btn, .cg-close-btn { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25); border-radius: 5px; padding: 3px 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 150ms; pointer-events: auto; color: #fff; }
+    .cg-eyedropper-btn:hover, .cg-close-btn:hover { background: rgba(255,255,255,.28); }
+    .cg-eyedropper-btn:focus-visible, .cg-close-btn:focus-visible, .cg-row-copy:focus-visible, .cg-btn-primary:focus-visible, .cg-btn-secondary:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
     #cg-body { padding: 10px 12px; }
+    #cg-tooltip.cg-pinned #cg-body { pointer-events: auto; }
     .cg-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: ${D.muted}; margin-bottom: 6px; font-weight: 600; }
-    .cg-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .cg-row { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-bottom: 5px; }
     .cg-label { font-size: 11px; color: ${D.muted}; }
-    .cg-value { font-size: 11px; color: ${D.value}; font-weight: 500; text-align: right; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cg-value { font-size: 11px; color: ${D.value}; font-weight: 500; text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .cg-row-copy { flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: none; border-radius: 4px; background: transparent; color: ${D.muted}; cursor: pointer; display: flex; align-items: center; justify-content: center; pointer-events: auto; opacity: .7; }
+    .cg-row-copy:hover { color: ${D.accent}; background: rgba(34,197,94,.12); opacity: 1; }
+    #cg-actions { pointer-events: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid ${D.border}; }
+    .cg-btn-primary { width: 100%; background: ${D.accent}; color: #052e16; border: none; border-radius: 6px; padding: 8px 10px; font-family: ${D.font}; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .cg-btn-primary:hover { background: ${D.accent2}; color: #fff; }
+    .cg-btn-row { display: flex; gap: 6px; }
+    .cg-btn-secondary { flex: 1; background: ${D.bg2}; color: ${D.value}; border: 1px solid ${D.border}; border-radius: 6px; padding: 6px 8px; font-family: ${D.font}; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .cg-btn-secondary:hover { border-color: ${D.accent}; color: ${D.accent}; }
     .cg-color-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 5px; cursor: pointer; pointer-events: auto; transition: background 100ms; margin-bottom: 3px; }
     .cg-color-row:hover { background: rgba(34,197,94,.1); }
     .cg-color-row.cg-copied { background: rgba(34,197,94,.2); }
@@ -306,6 +322,8 @@
   `;
 
   const EYEDROPPER_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 10-10"/><path d="M12 12l9-9"/><path d="m15 15 3-3"/></svg>';
+  const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
   // ── DOM helpers ──────────────────────────────────────────────────
   function el(tag, attrs, children) {
@@ -375,6 +393,58 @@
     _toastTimeout = setTimeout(() => { if (toast.parentNode) toast.remove(); }, 2000);
   }
 
+  // ── Inspector dump (Copy all) ────────────────────────────────────
+  function buildInspectorDump(target) {
+    const cs = getComputedStyle(target);
+    const rect = target.getBoundingClientRect();
+    const colors = scanColors(target);
+    const contrastInfo = getContrastInfo(target);
+
+    const tag = (target.tagName || 'div').toLowerCase();
+    const id = target.id ? `#${target.id}` : '';
+    let cls = '';
+    if (typeof target.className === 'string' && target.className.trim()) {
+      cls = '.' + target.className.trim().split(/\s+/).slice(0, 3).join('.');
+    } else if (target.className && typeof target.className.baseVal === 'string' && target.className.baseVal.trim()) {
+      cls = '.' + target.className.baseVal.trim().split(/\s+/).slice(0, 3).join('.');
+    }
+
+    const colorList = colors.map(c => `${rgbaToHex(c)} | ${rgbaToRgbStr(c)} | ${rgbaToHsl(c)} | ${rgbaToOklch(c)}`).join('\n');
+
+    let contrastText = '';
+    if (contrastInfo && !contrastInfo.undetermined && contrastInfo.ratio) {
+      const r = Math.round(contrastInfo.ratio * 100) / 100;
+      const badge = wcagBadge(contrastInfo.ratio);
+      contrastText = `\n[${t('contrastBlock')}]\n${t('ratio')}: ${r}:1 (${badge.label})\n${t('textColor')}: ${contrastInfo.fg ? rgbaToHex(contrastInfo.fg) : '?'}\n${t('bgColor')}: ${contrastInfo.bg ? rgbaToHex(contrastInfo.bg) : '?'}`;
+    }
+
+    return `${t('inspectorCopyTitle')}
+${t('element')}: ${tag}${cls}${id}
+
+[${t('colorsBlock')}]
+${colorList || t('noColorsBlock')}
+${contrastText}
+[${t('typographyBlock')}]
+${t('fontFamily')}: ${cs.getPropertyValue('font-family').split(',')[0]}
+${t('fontSize')}: ${cs.getPropertyValue('font-size')}
+${t('fontWeight')}: ${cs.getPropertyValue('font-weight')}
+
+[${t('layoutBlock')}]
+${t('size')}: ${Math.round(rect.width)}px × ${Math.round(rect.height)}px
+${t('margin')}: ${getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}
+${t('padding')}: ${getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
+  }
+
+  function copyValue(text, flashEl) {
+    return copyToClipboard(text).then(() => {
+      if (flashEl) {
+        flashEl.classList.add('cg-copied');
+        setTimeout(() => flashEl.classList.remove('cg-copied'), 1000);
+      }
+      showToast(`${t('copied')} ${text}`);
+    });
+  }
+
   // ── Update tooltip content ───────────────────────────────────────
   function updateTooltipContent(target) {
     if (!shadow || !host) return;
@@ -383,6 +453,7 @@
       const rect = target.getBoundingClientRect();
       const colors = scanColors(target);
       const contrastInfo = getContrastInfo(target);
+      const sizeText = `${Math.round(rect.width)}px × ${Math.round(rect.height)}px`;
 
       const tag = (target.tagName || 'div').toLowerCase();
       const idStr = target.id ? `#${target.id}` : '';
@@ -397,18 +468,31 @@
       const fontRaw = cs.getPropertyValue('font-family') || '';
       const fontFamily = fontRaw.split(',')[0].replace(/['"]/g, '').trim() || 'inherit';
       const truncatedFont = fontFamily.length > 22 ? fontFamily.slice(0, 22) + '…' : fontFamily;
+      const fontSize = cs.getPropertyValue('font-size') || 'inherit';
+      const fontWeight = cs.getPropertyValue('font-weight') || 'normal';
+      const margin = getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left');
+      const padding = getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left');
 
       const tooltip = shadow.querySelector('#cg-tooltip');
       if (!tooltip) return;
       tooltip.textContent = '';
+      tooltip.classList.toggle('cg-pinned', isPinned);
 
       // Header
-      const header = el('div', { id: 'cg-header' }, [
+      const headerKids = [
         el('span', { class: 'cg-logo', text: t('brand') }),
         el('span', { class: 'cg-tag', text: elementLabel }),
         el('button', { class: 'cg-eyedropper-btn', 'aria-label': 'Pick color with eyedropper', html: EYEDROPPER_SVG, onclick: handleEyedropper })
-      ]);
-      tooltip.appendChild(header);
+      ];
+      if (isPinned) {
+        headerKids.push(el('button', {
+          class: 'cg-close-btn',
+          'aria-label': t('closePin'),
+          html: CLOSE_SVG,
+          onclick: (e) => { e.stopPropagation(); unpin(); }
+        }));
+      }
+      tooltip.appendChild(el('div', { id: 'cg-header' }, headerKids));
 
       // Body
       const body = el('div', { id: 'cg-body' });
@@ -428,10 +512,7 @@
           row.addEventListener('click', (e) => {
             e.stopPropagation();
             const formatted = formatColor(c);
-            copyToClipboard(formatted).then(() => {
-              row.classList.add('cg-copied');
-              setTimeout(() => row.classList.remove('cg-copied'), 1000);
-              showToast(`${t('copied')} ${formatted}`);
+            copyValue(formatted, row).then(() => {
               chrome.runtime.sendMessage({ action: 'saveColor', color: { hex: c.hex, rgb: rgbaToRgbStr(c) } });
             });
           });
@@ -443,14 +524,16 @@
         }
       }
 
-      // Contrast section (only if text contrast is present)
+      // Contrast section
       if (contrastInfo) {
         body.appendChild(el('div', { class: 'cg-divider' }));
         body.appendChild(el('div', { class: 'cg-section-label', text: t('contrast') }));
         const contrastRow = el('div', { class: 'cg-contrast-row' });
+        let contrastCopy = '';
         if (contrastInfo.undetermined) {
           contrastRow.appendChild(el('span', { class: 'cg-label', text: t('contrastNote') }));
           contrastRow.appendChild(el('span', { class: 'cg-badge cg-badge-na', text: t('undetermined') }));
+          contrastCopy = t('contrastNote');
         } else {
           const preview = el('div', { class: 'cg-contrast-preview' }, [
             el('span', { class: 'cg-contrast-swatch', style: { background: rgbaToRgbStr(contrastInfo.fg) } }),
@@ -462,36 +545,91 @@
           contrastRow.appendChild(el('span', { class: 'cg-contrast-ratio', text: `${r}:1` }));
           const badge = wcagBadge(contrastInfo.ratio);
           contrastRow.appendChild(el('span', { class: `cg-badge ${badge.cls}`, text: badge.label }));
+          contrastCopy = `${r}:1 (${badge.label})`;
+        }
+        if (isPinned && contrastCopy) {
+          contrastRow.appendChild(makeCopyBtn(contrastCopy));
         }
         body.appendChild(contrastRow);
       }
 
-      // Typography section
+      // Typography
       body.appendChild(el('div', { class: 'cg-divider' }));
       body.appendChild(el('div', { class: 'cg-section-label', text: t('typography') }));
-      body.appendChild(makeRow(t('family'), truncatedFont));
-      body.appendChild(makeRow(t('size'), cs.getPropertyValue('font-size') || 'inherit'));
-      body.appendChild(makeRow(t('weight'), cs.getPropertyValue('font-weight') || 'normal'));
+      body.appendChild(makeRow(t('family'), truncatedFont, fontFamily));
+      body.appendChild(makeRow(t('size'), fontSize, fontSize));
+      body.appendChild(makeRow(t('weight'), fontWeight, fontWeight));
 
-      // Layout section
+      // Layout
       body.appendChild(el('div', { class: 'cg-divider' }));
       body.appendChild(el('div', { class: 'cg-section-label', text: t('layout') }));
-      body.appendChild(makeRow(t('size'), `${Math.round(rect.width)}px × ${Math.round(rect.height)}px`));
-      body.appendChild(makeRow(t('margin'), getSpacing(target, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')));
-      body.appendChild(makeRow(t('padding'), getSpacing(target, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')));
+      body.appendChild(makeRow(t('size'), sizeText, sizeText));
+      body.appendChild(makeRow(t('margin'), margin, margin));
+      body.appendChild(makeRow(t('padding'), padding, padding));
 
       tooltip.appendChild(body);
-      tooltip.appendChild(el('div', { id: 'cg-footer', text: t('footer') }));
+
+      if (isPinned) {
+        const actions = el('div', { id: 'cg-actions' }, [
+          el('button', {
+            class: 'cg-btn-primary',
+            text: t('copyAll'),
+            onclick: (e) => {
+              e.stopPropagation();
+              copyValue(buildInspectorDump(target));
+            }
+          }),
+          el('div', { class: 'cg-btn-row' }, [
+            el('button', {
+              class: 'cg-btn-secondary',
+              text: t('copyColor'),
+              onclick: (e) => {
+                e.stopPropagation();
+                if (!colors.length) { showToast(t('noColors')); return; }
+                const formatted = formatColor(colors[0]);
+                copyValue(formatted).then(() => {
+                  chrome.runtime.sendMessage({ action: 'saveColor', color: { hex: colors[0].hex, rgb: rgbaToRgbStr(colors[0]) } });
+                });
+              }
+            }),
+            el('button', {
+              class: 'cg-btn-secondary',
+              text: t('copySize'),
+              onclick: (e) => {
+                e.stopPropagation();
+                copyValue(sizeText);
+              }
+            })
+          ])
+        ]);
+        tooltip.appendChild(actions);
+      } else {
+        tooltip.appendChild(el('div', { id: 'cg-footer', text: t('footer') }));
+      }
     } catch (err) {
       console.error('ColorGrab update error:', err);
     }
   }
 
-  function makeRow(label, value) {
-    return el('div', { class: 'cg-row' }, [
+  function makeCopyBtn(text) {
+    return el('button', {
+      class: 'cg-row-copy',
+      'aria-label': t('copyRow'),
+      html: COPY_SVG,
+      onclick: (e) => {
+        e.stopPropagation();
+        copyValue(text);
+      }
+    });
+  }
+
+  function makeRow(label, display, copyText) {
+    const kids = [
       el('span', { class: 'cg-label', text: label }),
-      el('span', { class: 'cg-value', text: value })
-    ]);
+      el('span', { class: 'cg-value', text: display })
+    ];
+    if (isPinned && copyText) kids.push(makeCopyBtn(copyText));
+    return el('div', { class: 'cg-row' }, kids);
   }
 
   // ── EyeDropper ───────────────────────────────────────────────────
@@ -528,9 +666,33 @@
     }
   }
 
+  // ── Pin / Unpin ──────────────────────────────────────────────────
+  function pin(target, clientX, clientY) {
+    if (currentTarget && currentTarget !== target) {
+      currentTarget.removeAttribute('data-colorgrab-highlight');
+    }
+    currentTarget = target;
+    currentTarget.setAttribute('data-colorgrab-highlight', '');
+    isPinned = true;
+    initTooltip();
+    updateTooltipContent(currentTarget);
+    updatePosition(clientX, clientY);
+    if (host) host.style.opacity = '1';
+  }
+
+  function unpin() {
+    if (!isPinned) return;
+    isPinned = false;
+    if (currentTarget) {
+      updateTooltipContent(currentTarget);
+    } else if (host) {
+      host.style.opacity = '0';
+    }
+  }
+
   // ── Event handlers ───────────────────────────────────────────────
   const _onMouseover = (e) => {
-    if (!isActive) return;
+    if (!isActive || isPinned) return;
     const target = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
     if (!target || !(target instanceof Element)) return;
     if (host && (target === host || host.contains(target))) return;
@@ -549,12 +711,12 @@
   };
 
   const _onMousemove = (e) => {
-    if (!isActive || !host) return;
+    if (!isActive || !host || isPinned) return;
     updatePosition(e.clientX, e.clientY);
   };
 
   const _onMouseout = (e) => {
-    if (!isActive) return;
+    if (!isActive || isPinned) return;
     if (e.relatedTarget && currentTarget && (e.relatedTarget === currentTarget || currentTarget.contains(e.relatedTarget))) return;
     if (e.relatedTarget && host && host.contains(e.relatedTarget)) return;
     if (currentTarget) currentTarget.removeAttribute('data-colorgrab-highlight');
@@ -563,66 +725,26 @@
   };
 
   const _onClick = (e) => {
-    if (!isActive || !currentTarget) return;
+    if (!isActive) return;
     const target = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target;
+    if (!target || !(target instanceof Element)) return;
     if (host && (target === host || host.contains(target))) return;
     if (target === statusBadge) return;
 
     e.preventDefault();
     e.stopPropagation();
-
-    try {
-      const cs = getComputedStyle(currentTarget);
-      const rect = currentTarget.getBoundingClientRect();
-      const colors = scanColors(currentTarget);
-      const contrastInfo = getContrastInfo(currentTarget);
-
-      const tag = (currentTarget.tagName || 'div').toLowerCase();
-      const id = currentTarget.id ? `#${currentTarget.id}` : '';
-      let cls = '';
-      if (typeof currentTarget.className === 'string' && currentTarget.className.trim()) {
-        cls = '.' + currentTarget.className.trim().split(/\s+/).slice(0, 3).join('.');
-      }
-
-      const colorList = colors.map(c => `${rgbaToHex(c)} | ${rgbaToRgbStr(c)} | ${rgbaToHsl(c)} | ${rgbaToOklch(c)}`).join('\n');
-
-      let contrastText = '';
-      if (contrastInfo && !contrastInfo.undetermined && contrastInfo.ratio) {
-        const r = Math.round(contrastInfo.ratio * 100) / 100;
-        const badge = wcagBadge(contrastInfo.ratio);
-        contrastText = `\n[${t('contrastBlock')}]\n${t('ratio')}: ${r}:1 (${badge.label})\n${t('textColor')}: ${contrastInfo.fg ? rgbaToHex(contrastInfo.fg) : '?'}\n${t('bgColor')}: ${contrastInfo.bg ? rgbaToHex(contrastInfo.bg) : '?'}`;
-      }
-
-      const copyText = `${t('inspectorCopyTitle')}
-${t('element')}: ${tag}${cls}${id}
-
-[${t('colorsBlock')}]
-${colorList || t('noColorsBlock')}
-${contrastText}
-[${t('typographyBlock')}]
-${t('fontFamily')}: ${cs.getPropertyValue('font-family').split(',')[0]}
-${t('fontSize')}: ${cs.getPropertyValue('font-size')}
-${t('fontWeight')}: ${cs.getPropertyValue('font-weight')}
-
-[${t('layoutBlock')}]
-${t('size')}: ${Math.round(rect.width)}px × ${Math.round(rect.height)}px
-${t('margin')}: ${getSpacing(currentTarget, 'margin-top', 'margin-right', 'margin-bottom', 'margin-left')}
-${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'padding-bottom', 'padding-left')}`;
-
-      copyToClipboard(copyText).then(() => {
-        showToast(t('copiedFlash'));
-      });
-    } catch (err) {
-      console.error('ColorGrab click error:', err);
-    }
+    pin(target, e.clientX, e.clientY);
   };
 
   const _onKeydown = (e) => {
-    if (e.key === 'Escape' && isActive) {
-      deactivate();
-      chrome.storage.local.set({ isActive: false });
-      chrome.runtime.sendMessage({ action: 'syncState', isActive: false });
+    if (e.key !== 'Escape' || !isActive) return;
+    if (isPinned) {
+      unpin();
+      return;
     }
+    deactivate();
+    chrome.storage.local.set({ isActive: false });
+    chrome.runtime.sendMessage({ action: 'syncState', isActive: false });
   };
 
   // ── Activate / Deactivate ────────────────────────────────────────
@@ -655,6 +777,7 @@ ${t('padding')}: ${getSpacing(currentTarget, 'padding-top', 'padding-right', 'pa
   function deactivate() {
     if (!isActive) return;
     isActive = false;
+    isPinned = false;
     document.removeEventListener('mouseover', _onMouseover, true);
     document.removeEventListener('mousemove', _onMousemove, true);
     document.removeEventListener('mouseout', _onMouseout, true);
