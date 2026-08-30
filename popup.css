@@ -364,7 +364,52 @@ main { padding: 0 14px; }
 .status-text { font-size: 14px; line-height: 1.05; font-weight: 700; letter-spacing: -0.02em; }
 .status-description { color: var(--cg-text-muted); font-size: 10px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status-led { width: 6px; height: 6px; margin-left: auto; margin-top: 15px; border-radius: 50%; background: var(--cg-text-secondary); }
-.status-container:has(.toggle-input:checked) .status-led { background: var(--cg-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent) 14%, transparent); }
+.status-container:has(.toggle-input:checked) .status-led {
+  background: var(--cg-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent) 14%, transparent);
+  animation: cg-status-pulse 1.8s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+.status-container::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -25%;
+  bottom: -25%;
+  left: -38%;
+  width: 30%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-14deg) translate3d(0, 0, 0);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(183, 228, 108, 0.06) 22%,
+    rgba(51, 214, 196, 0.13) 46%,
+    rgba(238, 112, 180, 0.10) 58%,
+    rgba(183, 228, 108, 0.06) 80%,
+    transparent
+  );
+  filter: blur(5px);
+}
+
+.status-container:has(.toggle-input:checked)::before {
+  opacity: 1;
+  animation: cg-scan-beam 3.4s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+.status-container > * { position: relative; z-index: 1; }
+.status-container::after { z-index: 1; }
+
+@keyframes cg-scan-beam {
+  from { transform: skewX(-14deg) translate3d(0, 0, 0); }
+  to { transform: skewX(-14deg) translate3d(470%, 0, 0); }
+}
+
+@keyframes cg-status-pulse {
+  0%, 100% { opacity: 0.78; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.22); }
+}
 
 .settings-row {
   display: flex;
@@ -424,4 +469,6 @@ main { padding: 0 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+  .status-container:has(.toggle-input:checked)::before,
+  .status-container:has(.toggle-input:checked) .status-led { animation: none; }
 }
