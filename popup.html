@@ -7,73 +7,88 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="header-stripe"></div>
+  <div class="header-stripe" aria-hidden="true"></div>
 
-  <div class="logo-row">
+  <header class="logo-row">
     <div class="brand-block">
-      <span class="logo-text">⬡ ColorGrab</span>
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <div class="brand-copy">
+        <span class="logo-text">ColorGrab</span>
+      </div>
       <span class="version-badge">v1.1</span>
     </div>
     <div class="header-controls">
-      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle dark/light theme">🌙</button>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle dark/light theme"></button>
       <button id="language-toggle" class="pill-btn" type="button" aria-label="Switch extension language">VI</button>
     </div>
-  </div>
+  </header>
 
-  <div class="status-container">
-    <div class="toggle-wrapper">
-      <input type="checkbox" id="inspector-toggle" class="toggle-input">
-      <label for="inspector-toggle" class="toggle-label"></label>
-    </div>
-    <div class="status-text-group">
-      <span id="status-text" class="status-text">Inspector Inactive</span>
-      <span id="status-description" class="status-description">Click toggle or press Alt+Shift+C</span>
-    </div>
-  </div>
+  <main>
+    <section class="status-container" aria-labelledby="status-text">
+      <div class="signal-rail" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="toggle-wrapper">
+        <input type="checkbox" id="inspector-toggle" class="toggle-input">
+        <label for="inspector-toggle" class="toggle-label" aria-label="Toggle inspector"></label>
+      </div>
+      <div class="status-text-group">
+        <span class="status-kicker">INSPECTOR MODE</span>
+        <span id="status-text" class="status-text" aria-live="polite">Inspector Inactive</span>
+        <span id="status-description" class="status-description">Click toggle or press Alt+Shift+C</span>
+      </div>
+      <span class="status-led" aria-hidden="true"></span>
+    </section>
 
-  <div class="settings-row">
-    <label for="format-select" id="format-label" class="setting-label">Copy format</label>
-    <select id="format-select" class="select-input">
-      <option value="hex">HEX (#RRGGBB)</option>
-      <option value="rgb">RGB (rgb/rgba)</option>
-      <option value="hsl">HSL (hsl)</option>
-      <option value="oklch">OKLCH (oklch)</option>
-    </select>
-  </div>
+    <section class="settings-row" aria-labelledby="format-label">
+      <div class="setting-copy">
+        <span class="setting-marker" aria-hidden="true"></span>
+        <label for="format-select" id="format-label" class="setting-label">Copy format</label>
+      </div>
+      <div class="select-shell">
+        <select id="format-select" class="select-input">
+          <option value="hex">HEX (#RRGGBB)</option>
+          <option value="rgb">RGB (rgb/rgba)</option>
+          <option value="hsl">HSL (hsl)</option>
+          <option value="oklch">OKLCH (oklch)</option>
+        </select>
+      </div>
+    </section>
 
-  <div class="divider"></div>
+    <div class="divider" aria-hidden="true"></div>
 
-  <!-- Color History -->
-  <div class="history-section">
-    <div class="section-header">
-      <span id="history-title" class="section-title">Color History</span>
-      <button id="clear-history" class="text-btn" type="button" style="display:none">Clear</button>
-    </div>
-    <div id="history-grid" class="history-grid">
-      <span id="history-empty" class="history-empty">No colors grabbed yet</span>
-    </div>
-  </div>
+    <section class="history-section" aria-labelledby="history-title">
+      <div class="section-header">
+        <div class="section-heading">
+          <span class="section-marker" aria-hidden="true"></span>
+          <span id="history-title" class="section-title">Color History</span>
+        </div>
+        <button id="clear-history" class="text-btn" type="button" style="display:none">Clear</button>
+      </div>
+      <div id="history-grid" class="history-grid">
+        <span id="history-empty" class="history-empty">No colors grabbed yet</span>
+      </div>
+    </section>
 
-  <div class="divider"></div>
+    <div class="divider" aria-hidden="true"></div>
 
-  <div class="tips-section">
-    <div class="tip-row">
-      <span class="tip-icon">🖱</span>
-      <span id="tip-hover" class="tip-text">Hover any element to see CSS + WCAG contrast</span>
-    </div>
-    <div class="tip-row">
-      <span class="tip-icon">📋</span>
-      <span id="tip-copy" class="tip-text">Click element to copy CSS • Click swatch for single color</span>
-    </div>
-    <div class="tip-row">
-      <span class="tip-icon">⌨</span>
-      <span id="tip-shortcut" class="tip-text">Alt+Shift+C toggle • Esc deactivate</span>
-    </div>
-  </div>
+    <section class="tips-section" aria-label="Tips">
+      <div class="tip-row">
+        <span class="tip-icon" aria-hidden="true">🖱</span>
+        <span id="tip-hover" class="tip-text">Hover any element to see CSS + WCAG contrast</span>
+      </div>
+      <div class="tip-row">
+        <span class="tip-icon" aria-hidden="true">📋</span>
+        <span id="tip-copy" class="tip-text">Click element to copy CSS • Click swatch for single color</span>
+      </div>
+      <div class="tip-row">
+        <span class="tip-icon" aria-hidden="true">⌨</span>
+        <span id="tip-shortcut" class="tip-text">Alt+Shift+C toggle • Esc deactivate</span>
+      </div>
+    </section>
+  </main>
 
-  <div id="footer-text" class="footer">
+  <footer id="footer-text" class="footer">
     ColorGrab • CSS Inspector & Color Toolkit
-  </div>
+  </footer>
 
   <script src="popup.js"></script>
 </body>
