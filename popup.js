@@ -163,13 +163,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     colors.forEach(c => {
       const swatch = document.createElement('div');
       swatch.className = 'history-swatch';
+      swatch.tabIndex = 0;
+      swatch.setAttribute('role', 'button');
+      swatch.setAttribute('aria-label', `Color ${c.hex}`);
       swatch.style.background = c.hex;
       swatch.title = `${c.hex}\nClick to copy`;
-      swatch.addEventListener('click', async () => {
+
+      const copyHandler = async () => {
         const textToCopy = formatColorValue(c, currentFormat);
         await navigator.clipboard.writeText(textToCopy);
         swatch.title = '✓ Copied!';
-        setTimeout(() => { swatch.title = `${c.hex}\nClick to copy`; }, 1500);
+        swatch.classList.add('copied');
+        setTimeout(() => {
+          swatch.title = `${c.hex}\nClick to copy`;
+          swatch.classList.remove('copied');
+        }, 800);
+      };
+
+      swatch.addEventListener('click', copyHandler);
+      swatch.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          copyHandler();
+        }
       });
       historyGrid.appendChild(swatch);
     });
